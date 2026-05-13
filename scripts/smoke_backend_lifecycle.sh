@@ -105,7 +105,7 @@ cleanup_test_fixtures
 
 echo "Creating owner user fixture..."
 OWNER_ID="$(psql_exec -Atc \
-  "insert into users(email,password_hash,role,mfa_enabled) values('$OWNER_EMAIL','devhash','owner',false) returning id;")"
+  "insert into users(email,password_hash,role,mfa_enabled) values('$OWNER_EMAIL','devhash','owner',false) returning id;" | tr -d '[:space:]')"
 
 echo "Creating profile..."
 PROFILE_RESP="$(api_request POST "/v1/profiles" \
