@@ -82,6 +82,60 @@
       </section>
 
       <section class="card">
+        <h2>Profiles & Identifiers</h2>
+        <div id="profiles-status" class="status hidden"></div>
+        <div class="row">
+          <button id="profiles-load-btn" type="button">Load Profiles</button>
+        </div>
+        <div class="row">
+          <select id="profiles-select">
+            <option value="">Select profile…</option>
+          </select>
+          <button id="profiles-show-btn" type="button">Show Selected Profile</button>
+        </div>
+
+        <label for="profile-display-name">New Profile Display Name</label>
+        <input id="profile-display-name" type="text" placeholder="Jane Doe" />
+
+        <label for="profile-region-code">Region Code (optional)</label>
+        <input id="profile-region-code" type="text" placeholder="US-CA" />
+
+        <label for="profile-owner-user-id">Owner User ID (optional UUID)</label>
+        <input id="profile-owner-user-id" type="text" placeholder="leave blank to use current user" />
+
+        <div class="row">
+          <button id="profile-create-btn" type="button">Create Profile</button>
+        </div>
+
+        <hr />
+
+        <label for="identifier-id-type">Identifier Type</label>
+        <select id="identifier-id-type">
+          <option value="full_name">full_name</option>
+          <option value="alias">alias</option>
+          <option value="email">email</option>
+          <option value="phone">phone</option>
+          <option value="address">address</option>
+          <option value="city">city</option>
+          <option value="dob_partial">dob_partial</option>
+          <option value="username">username</option>
+        </select>
+
+        <label for="identifier-value">Identifier Value</label>
+        <input id="identifier-value" type="text" placeholder="jane@example.com" />
+
+        <div class="row">
+          <label><input id="identifier-is-primary" type="checkbox" /> Is Primary</label>
+        </div>
+        <div class="row">
+          <button id="identifiers-load-btn" type="button">Load Selected Profile Identifiers</button>
+          <button id="identifier-create-btn" type="button">Add Identifier to Selected Profile</button>
+        </div>
+
+        <pre id="profiles-output"></pre>
+      </section>
+
+      <section class="card">
         <h2>Users (admin/owner)</h2>
         <div id="users-status" class="status hidden"></div>
         <div class="row">

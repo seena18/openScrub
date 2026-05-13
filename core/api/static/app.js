@@ -7,6 +7,8 @@ let apiKeyCache = [];
 let usersCache = [];
 let auditItemsCache = [];
 let auditNextCursor = null;
+let profileCache = [];
+let selectedProfileIdentifiersCache = [];
 
 function accessToken() {
   return localStorage.getItem(accessStorageKey) || "";
@@ -73,9 +75,11 @@ function summarizeSession(user) {
 function renderSessionState({
   authStatus,
   sessionStatus,
+  profilesStatus,
   usersStatus,
   apiKeysStatus,
   auditStatus,
+  profilesOut,
   usersOut,
   apiKeysOut,
   auditOut,
@@ -85,24 +89,31 @@ function renderSessionState({
   sessionStatus.textContent = summarizeSession(user);
 
   if (!user) {
+    profileCache = [];
+    selectedProfileIdentifiersCache = [];
+    renderProfilePicker([]);
     usersCache = [];
     renderUserPicker([]);
     apiKeyCache = [];
     renderApiKeyPicker([]);
     auditItemsCache = [];
     auditNextCursor = null;
-    usersOut.textContent = pretty({ status: "info", detail: "Login required." });
-    apiKeysOut.textContent = pretty({ status: "info", detail: "Login required." });
-    auditOut.textContent = pretty({ status: "info", detail: "Login required." });
+    if (profilesOut) profilesOut.textContent = pretty({ status: "info", detail: "Login required." });
+    if (usersOut) usersOut.textContent = pretty({ status: "info", detail: "Login required." });
+    if (apiKeysOut) apiKeysOut.textContent = pretty({ status: "info", detail: "Login required." });
+    if (auditOut) auditOut.textContent = pretty({ status: "info", detail: "Login required." });
     setStatus(authStatus, "info", "Login required.");
     return;
   }
 
+  const role = String(user.role || "").toLowerCase();
+  if (profilesStatus && !["owner", "admin", "operator", "system"].includes(role)) {
+    setStatus(profilesStatus, "info", "Profile creation requires owner/admin/operator/system role.");
+  }
   if (!hasPrivilegedRole(user)) {
     setStatus(usersStatus, "info", "Users panel requires owner/admin/system role.");
     setStatus(apiKeysStatus, "info", "API key panel requires owner/admin/system role.");
   }
-  const role = String(user.role || "").toLowerCase();
   if (!["owner", "admin", "reviewer", "system"].includes(role)) {
     setStatus(auditStatus, "info", "Audit panel requires owner/admin/reviewer/system role.");
   }
@@ -315,6 +326,40 @@ function summarizeUser(item) {
   return `${item.email} • ${role} • ${mfa}`;
 }
 
+function summarizeProfile(item) {
+  const status = item.status || "unknown";
+  const region = item.region_code || "n/a";
+  return `${item.display_name} • ${status} • ${region}`;
+}
+
+function renderProfilePicker(items) {
+  const select = document.getElementById("profiles-select");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select profile…";
+  select.appendChild(placeholder);
+
+  for (const item of items || []) {
+    const opt = document.createElement("option");
+    opt.value = item.id;
+    opt.textContent = summarizeProfile(item);
+    select.appendChild(opt);
+  }
+
+  if (current && items.some((x) => x.id === current)) {
+    select.value = current;
+  }
+}
+
+function findSelectedProfile() {
+  const selectedId = document.getElementById("profiles-select").value;
+  return profileCache.find((x) => x.id === selectedId) || null;
+}
+
 function renderUserPicker(items) {
   const select = document.getElementById("users-select");
   if (!select) return;
@@ -487,12 +532,58 @@ async function autoLoadApiKeysAfterAuth(apiKeysOut, apiKeysStatus) {
   }
 }
 
+async function autoLoadProfilesAfterAuth(profilesOut, profilesStatus) {
+  try {
+    const data = await refreshProfiles(profilesOut, { verbose: false });
+    if ((data.items || []).length > 0) {
+      setStatus(profilesStatus, "success", "Profiles auto-loaded after login.");
+    } else {
+      setStatus(profilesStatus, "info", "No profiles found.");
+    }
+  } catch (err) {
+    const status = Number(err?.status || 0);
+    if (status === 403) {
+      setStatus(profilesStatus, "info", "Profile panel requires owner/admin/operator/viewer/system role.");
+      return;
+    }
+    setStatus(profilesStatus, "error", errMessage(err, "Unable to auto-load profiles."));
+  }
+}
+
 async function refreshUsers(usersOut, { verbose = true } = {}) {
   const data = await api("/v1/users");
   const items = data.items || [];
   usersCache = items;
   renderUserPicker(items);
   if (verbose) usersOut.textContent = pretty(data);
+  return data;
+}
+
+async function refreshProfiles(profilesOut, { verbose = true } = {}) {
+  const data = await api("/v1/profiles");
+  const items = data.items || [];
+  profileCache = items;
+  renderProfilePicker(items);
+  if (verbose) {
+    profilesOut.textContent = pretty({
+      profiles: items,
+      selected_profile_identifiers: selectedProfileIdentifiersCache,
+    });
+  }
+  return data;
+}
+
+async function refreshSelectedProfileIdentifiers(profilesOut) {
+  const selected = findSelectedProfile();
+  if (!selected) {
+    throw { status: 400, body: { detail: "select a profile first" } };
+  }
+  const data = await api(`/v1/profiles/${encodeURIComponent(selected.id)}/identifiers`);
+  selectedProfileIdentifiersCache = data.items || [];
+  profilesOut.textContent = pretty({
+    selected_profile: selected,
+    selected_profile_identifiers: selectedProfileIdentifiersCache,
+  });
   return data;
 }
 
@@ -632,6 +723,7 @@ function bind() {
   const authOut = document.getElementById("auth-output");
   const mfaOut = document.getElementById("mfa-output");
   const webauthnOut = document.getElementById("webauthn-output");
+  const profilesOut = document.getElementById("profiles-output");
   const usersOut = document.getElementById("users-output");
   const auditOut = document.getElementById("audit-output");
   const apiKeyPreviewOut = document.getElementById("api-key-preview-output");
@@ -641,6 +733,7 @@ function bind() {
   const sessionStatus = document.getElementById("session-status");
   const mfaStatus = document.getElementById("mfa-status");
   const webauthnStatus = document.getElementById("webauthn-status");
+  const profilesStatus = document.getElementById("profiles-status");
   const usersStatus = document.getElementById("users-status");
   const auditStatus = document.getElementById("audit-status");
   const apiKeysStatus = document.getElementById("api-keys-status");
@@ -649,6 +742,7 @@ function bind() {
   clearStatus(authStatus);
   clearStatus(mfaStatus);
   clearStatus(webauthnStatus);
+  clearStatus(profilesStatus);
   clearStatus(usersStatus);
   clearStatus(auditStatus);
   clearStatus(apiKeysStatus);
@@ -656,9 +750,11 @@ function bind() {
   renderSessionState({
     authStatus,
     sessionStatus,
+    profilesStatus,
     usersStatus,
     apiKeysStatus,
     auditStatus,
+    profilesOut,
     usersOut,
     apiKeysOut,
     auditOut,
@@ -685,13 +781,16 @@ function bind() {
         renderSessionState({
           authStatus,
           sessionStatus,
+          profilesStatus,
           usersStatus,
           apiKeysStatus,
           auditStatus,
+          profilesOut,
           usersOut,
           apiKeysOut,
           auditOut,
         });
+        await autoLoadProfilesAfterAuth(profilesOut, profilesStatus);
         await autoLoadApiKeysAfterAuth(apiKeysOut, apiKeysStatus);
         return data;
       },
@@ -732,13 +831,16 @@ function bind() {
         renderSessionState({
           authStatus,
           sessionStatus,
+          profilesStatus,
           usersStatus,
           apiKeysStatus,
           auditStatus,
+          profilesOut,
           usersOut,
           apiKeysOut,
           auditOut,
         });
+        await autoLoadProfilesAfterAuth(profilesOut, profilesStatus);
         await autoLoadApiKeysAfterAuth(apiKeysOut, apiKeysStatus);
         return finish;
       },
@@ -773,9 +875,11 @@ function bind() {
     renderSessionState({
       authStatus,
       sessionStatus,
+      profilesStatus,
       usersStatus,
       apiKeysStatus,
       auditStatus,
+      profilesOut,
       usersOut,
       apiKeysOut,
       auditOut,
@@ -796,9 +900,11 @@ function bind() {
         renderSessionState({
           authStatus,
           sessionStatus,
+          profilesStatus,
           usersStatus,
           apiKeysStatus,
           auditStatus,
+          profilesOut,
           usersOut,
           apiKeysOut,
           auditOut,
@@ -989,6 +1095,127 @@ function bind() {
         );
         await refreshWebAuthnCredentials(webauthnOut, { verbose: false });
         return data;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("profiles-load-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    await runTask({
+      button,
+      statusEl: profilesStatus,
+      loadingText: "Loading profiles…",
+      successText: "Profiles loaded.",
+      outputEl: profilesOut,
+      task: async () => refreshProfiles(profilesOut),
+    }).catch(() => {});
+  });
+
+  document.getElementById("profiles-show-btn").addEventListener("click", () => {
+    const selected = findSelectedProfile();
+    if (!selected) {
+      profilesOut.textContent = pretty({ status: "info", detail: "No profile selected." });
+      setStatus(profilesStatus, "info", "Select a profile.");
+      return;
+    }
+    profilesOut.textContent = pretty({
+      selected_profile: selected,
+      selected_profile_identifiers: selectedProfileIdentifiersCache,
+    });
+    setStatus(profilesStatus, "success", "Showing selected profile.");
+  });
+
+  document.getElementById("profiles-select").addEventListener("change", () => {
+    const selected = findSelectedProfile();
+    if (!selected) {
+      selectedProfileIdentifiersCache = [];
+      return;
+    }
+    profilesOut.textContent = pretty({
+      selected_profile: selected,
+      selected_profile_identifiers: selectedProfileIdentifiersCache,
+    });
+  });
+
+  document.getElementById("profile-create-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const displayName = document.getElementById("profile-display-name").value.trim();
+    const regionCode = document.getElementById("profile-region-code").value.trim();
+    const ownerUserId = document.getElementById("profile-owner-user-id").value.trim();
+    const payload = { display_name: displayName };
+    if (regionCode) payload.region_code = regionCode;
+    if (ownerUserId) payload.owner_user_id = ownerUserId;
+
+    await runTask({
+      button,
+      statusEl: profilesStatus,
+      loadingText: "Creating profile…",
+      successText: "Profile created.",
+      outputEl: profilesOut,
+      task: async () => {
+        const created = await api("/v1/profiles", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        document.getElementById("profile-display-name").value = "";
+        document.getElementById("profile-region-code").value = "";
+        await refreshProfiles(profilesOut, { verbose: false });
+        document.getElementById("profiles-select").value = created.id;
+        selectedProfileIdentifiersCache = [];
+        profilesOut.textContent = pretty({
+          created_profile: created,
+          selected_profile_identifiers: selectedProfileIdentifiersCache,
+        });
+        return created;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("identifiers-load-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    await runTask({
+      button,
+      statusEl: profilesStatus,
+      loadingText: "Loading identifiers…",
+      successText: "Identifiers loaded.",
+      outputEl: profilesOut,
+      task: async () => refreshSelectedProfileIdentifiers(profilesOut),
+    }).catch(() => {});
+  });
+
+  document.getElementById("identifier-create-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedProfile();
+    if (!selected) {
+      profilesOut.textContent = pretty({ error: "Select a profile first." });
+      setStatus(profilesStatus, "error", "Select a profile to add identifier.");
+      return;
+    }
+    const idType = document.getElementById("identifier-id-type").value.trim();
+    const value = document.getElementById("identifier-value").value.trim();
+    const isPrimary = document.getElementById("identifier-is-primary").checked;
+    const payload = {
+      profile_id: selected.id,
+      id_type: idType,
+      value,
+      is_primary: isPrimary,
+    };
+
+    await runTask({
+      button,
+      statusEl: profilesStatus,
+      loadingText: "Creating identifier…",
+      successText: "Identifier created.",
+      outputEl: profilesOut,
+      task: async () => {
+        const created = await api("/v1/identifiers", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        document.getElementById("identifier-value").value = "";
+        document.getElementById("identifier-is-primary").checked = false;
+        await refreshSelectedProfileIdentifiers(profilesOut);
+        return created;
       },
     }).catch(() => {});
   });
@@ -1397,9 +1624,15 @@ function bind() {
     document.getElementById("totp_disable_code").value = "";
     document.getElementById("webauthn_delete_password").value = "";
     document.getElementById("users-delete-confirm").value = "";
+    document.getElementById("profile-display-name").value = "";
+    document.getElementById("profile-region-code").value = "";
+    document.getElementById("profile-owner-user-id").value = "";
+    document.getElementById("identifier-value").value = "";
+    document.getElementById("identifier-is-primary").checked = false;
 
     auditItemsCache = [];
     auditNextCursor = null;
+    selectedProfileIdentifiersCache = [];
     document.getElementById("audit-filter-action").value = "";
     document.getElementById("audit-filter-actor").value = "";
     document.getElementById("audit-filter-object").value = "";
@@ -1408,6 +1641,7 @@ function bind() {
 
     mfaOut.textContent = pretty({ status: "ok", detail: "MFA form inputs cleared." });
     webauthnOut.textContent = pretty({ status: "ok", detail: "WebAuthn sensitive inputs cleared." });
+    profilesOut.textContent = pretty({ status: "ok", detail: "Profile/identifier form inputs and selected identifier cache cleared." });
     auditOut.textContent = pretty({ status: "ok", detail: "Audit cache + filters cleared from UI state." });
     apiKeysOut.textContent = pretty({ status: "ok", detail: "API key plaintext and danger confirm cleared." });
     apiKeyPreviewOut.textContent = pretty({ status: "ok", detail: "Preview remains available; sensitive fields cleared." });
@@ -1416,29 +1650,34 @@ function bind() {
 
   if (token()) {
     api("/v1/auth/me")
-      .then((me) => {
+      .then(async (me) => {
         setSessionUser(me);
         authOut.textContent = pretty(me);
         setStatus(authStatus, "success", "Session restored from local token.");
         renderSessionState({
           authStatus,
           sessionStatus,
+          profilesStatus,
           usersStatus,
           apiKeysStatus,
           auditStatus,
+          profilesOut,
           usersOut,
           apiKeysOut,
           auditOut,
         });
+        await autoLoadProfilesAfterAuth(profilesOut, profilesStatus);
       })
       .catch(() => {
         clearSession();
         renderSessionState({
           authStatus,
           sessionStatus,
+          profilesStatus,
           usersStatus,
           apiKeysStatus,
           auditStatus,
+          profilesOut,
           usersOut,
           apiKeysOut,
           auditOut,
