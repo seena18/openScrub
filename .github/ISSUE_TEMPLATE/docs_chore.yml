@@ -1,0 +1,50 @@
+name: Docs / chore
+description: Documentation updates, maintenance tasks, and non-feature improvements.
+title: "[Docs/Chore] "
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for documentation gaps, maintenance, and project hygiene tasks.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What should be updated or maintained?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why This Matters
+      description: Risk reduction, clarity, onboarding speed, or operational impact.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Work Type
+      options:
+        - Documentation
+        - CI/Workflow maintenance
+        - Dependency/runtime maintenance
+        - Refactor (no behavior change)
+        - Project governance/standards
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Definition of Done
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+

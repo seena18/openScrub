@@ -1,0 +1,32 @@
+name: Backend Lifecycle Smoke
+
+on:
+  pull_request:
+    paths:
+      - "core/**"
+      - "workers/**"
+      - "deploy/**"
+      - "scripts/smoke_backend_lifecycle.sh"
+      - ".github/workflows/backend-lifecycle-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "core/**"
+      - "workers/**"
+      - "deploy/**"
+      - "scripts/smoke_backend_lifecycle.sh"
+      - ".github/workflows/backend-lifecycle-smoke.yml"
+
+jobs:
+  backend-lifecycle-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run backend lifecycle smoke script
+        run: |
+          chmod +x scripts/smoke_backend_lifecycle.sh
+          ./scripts/smoke_backend_lifecycle.sh

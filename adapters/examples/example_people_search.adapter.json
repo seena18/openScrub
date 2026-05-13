@@ -1,0 +1,29 @@
+{
+  "key": "example_people_search",
+  "displayName": "Example People Search",
+  "domain": "example.com",
+  "flowType": "semi_auto",
+  "version": "1.1.0",
+  "owner": "community",
+  "optOutUrl": "https://example.com/optout",
+  "requires": {
+    "captcha": false,
+    "emailVerification": true,
+    "phoneVerification": false,
+    "login": false
+  },
+  "inputs": ["full_name", "city", "email"],
+  "rateLimit": {
+    "maxRunsPerHour": 6,
+    "minDelayMs": 3000
+  },
+  "capabilities": {
+    "discovery": true,
+    "submitOptOut": true,
+    "verifyRemoval": true
+  },
+  "runner": {
+    "path": "example_runner.py",
+    "args": []
+  }
+}

@@ -1,0 +1,32 @@
+name: Adapter Quality Gate
+
+on:
+  pull_request:
+    paths:
+      - "adapters/**"
+      - "scripts/validate_adapters.py"
+      - ".github/workflows/adapter-quality-gate.yml"
+      - "docs/adapter-interface.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "adapters/**"
+      - "scripts/validate_adapters.py"
+      - ".github/workflows/adapter-quality-gate.yml"
+      - "docs/adapter-interface.md"
+
+jobs:
+  validate-adapters:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate adapter manifests (strict, containerized)
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            python:3.12-slim \
+            python3 scripts/validate_adapters.py --strict-warnings

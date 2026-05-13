@@ -1,0 +1,12 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+psycopg2-binary==2.9.10
+pydantic==2.11.4
+boto3==1.38.23
+PyJWT==2.10.1
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+cryptography==45.0.3
+redis==5.2.1
+pyotp==2.9.0
+webauthn==2.7.1

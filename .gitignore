@@ -1,0 +1,29 @@
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Node / UI artifacts
+tests/ui/node_modules/
+tests/ui/playwright-report/
+tests/ui/test-results/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
+
+# Logs and temp
+*.log
+tmp/
+*.tmp

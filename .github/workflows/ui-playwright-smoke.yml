@@ -1,0 +1,105 @@
+name: UI Playwright Smoke
+
+on:
+  pull_request:
+    paths:
+      - "core/api/static/**"
+      - "core/**"
+      - "deploy/**"
+      - "tests/ui/**"
+      - ".github/workflows/ui-playwright-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "core/api/static/**"
+      - "core/**"
+      - "deploy/**"
+      - "tests/ui/**"
+      - ".github/workflows/ui-playwright-smoke.yml"
+
+jobs:
+  ui-playwright-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: tests/ui/package-lock.json
+
+      - name: Prepare env file
+        run: |
+          cp deploy/.env.example deploy/.env
+          node - <<'JS'
+          const fs = require("fs");
+          const crypto = require("crypto");
+
+          const envPath = "deploy/.env";
+          const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+          const fernet = crypto.randomBytes(32).toString("base64url");
+          const fernet2 = crypto.randomBytes(32).toString("base64url");
+
+          const out = lines.map((line) => {
+            if (line.startsWith("IDENTIFIER_ENCRYPTION_KEY=")) {
+              return `IDENTIFIER_ENCRYPTION_KEY=${fernet}`;
+            }
+            if (line.startsWith("MFA_TOTP_ENCRYPTION_KEY=")) {
+              return `MFA_TOTP_ENCRYPTION_KEY=${fernet2}`;
+            }
+            return line;
+          });
+
+          fs.writeFileSync(envPath, `${out.join("\n")}\n`, "utf8");
+          JS
+
+      - name: Start API stack
+        run: |
+          cd deploy
+          docker compose up -d --build postgres redis migrate api
+
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become healthy in time"
+          docker compose -f deploy/docker-compose.yml ps
+          exit 1
+
+      - name: Install UI test deps
+        run: |
+          cd tests/ui
+          npm ci
+
+      - name: Install Playwright browser
+        run: |
+          cd tests/ui
+          npx playwright install --with-deps chromium
+
+      - name: Run UI smoke tests
+        id: ui_smoke
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8080
+        run: |
+          cd tests/ui
+          npm test
+
+      - name: Upload Playwright Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-playwright-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tests/ui/playwright-report
+            tests/ui/test-results
+          if-no-files-found: ignore
+          retention-days: 14

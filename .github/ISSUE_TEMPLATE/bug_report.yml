@@ -1,0 +1,85 @@
+name: Bug report
+description: Report a reproducible bug in API, worker, adapters, deployment, or UI.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting:
+        - verify on latest `main`
+        - include reproduction steps and expected vs actual behavior
+        - include logs/errors with secrets redacted
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is the bug?
+      placeholder: Clear one-paragraph summary.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Minimal, deterministic steps.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected Surface
+      options:
+        - API
+        - Worker
+        - Adapter
+        - Deploy/Compose
+        - UI
+        - CI/Workflow
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Errors (redacted)
+      description: Paste relevant snippets only. Remove tokens/secrets/PII.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Docker version, browser (if UI), and any relevant config overrides.
+      placeholder: |
+        OS:
+        Docker:
+        Compose:
+        Browser:
+        Config overrides:
+    validations:
+      required: false

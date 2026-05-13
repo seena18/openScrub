@@ -1,0 +1,31 @@
+name: Retention Smoke
+
+on:
+  pull_request:
+    paths:
+      - "workers/**"
+      - "scripts/smoke_retention_cleanup.sh"
+      - "deploy/docker-compose.yml"
+      - "deploy/.env.example"
+      - ".github/workflows/retention-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "workers/**"
+      - "scripts/smoke_retention_cleanup.sh"
+      - "deploy/docker-compose.yml"
+      - "deploy/.env.example"
+      - ".github/workflows/retention-smoke.yml"
+
+jobs:
+  retention-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run retention smoke script
+        run: |
+          chmod +x scripts/smoke_retention_cleanup.sh
+          ./scripts/smoke_retention_cleanup.sh

@@ -1,0 +1,103 @@
+name: CI Sanity Gate
+
+on:
+  pull_request:
+    paths:
+      - "core/**"
+      - "workers/**"
+      - "deploy/**"
+      - "tests/**"
+      - ".github/workflows/**"
+      - "scripts/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "core/**"
+      - "workers/**"
+      - "deploy/**"
+      - "tests/**"
+      - ".github/workflows/**"
+      - "scripts/**"
+
+concurrency:
+  group: ci-sanity-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanity-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare env file
+        run: |
+          cp deploy/.env.example deploy/.env
+          node - <<'JS'
+          const fs = require("fs");
+          const crypto = require("crypto");
+
+          const envPath = "deploy/.env";
+          const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+          const fernet = crypto.randomBytes(32).toString("base64url");
+          const fernet2 = crypto.randomBytes(32).toString("base64url");
+
+          const out = lines.map((line) => {
+            if (line.startsWith("IDENTIFIER_ENCRYPTION_KEY=")) {
+              return `IDENTIFIER_ENCRYPTION_KEY=${fernet}`;
+            }
+            if (line.startsWith("MFA_TOTP_ENCRYPTION_KEY=")) {
+              return `MFA_TOTP_ENCRYPTION_KEY=${fernet2}`;
+            }
+            return line;
+          });
+
+          fs.writeFileSync(envPath, `${out.join("\n")}\n`, "utf8");
+          JS
+
+      - name: Validate Docker Compose config
+        run: |
+          cd deploy
+          docker compose config > /tmp/compose-config.out
+          test -s /tmp/compose-config.out
+
+      - name: Build core images
+        run: |
+          cd deploy
+          docker compose build api migrate integration-tests
+
+      - name: Start smoke stack
+        run: |
+          cd deploy
+          docker compose up -d postgres redis migrate api
+
+      - name: Health smoke
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API health check did not pass within 60 seconds."
+          exit 1
+
+      - name: Capture compose logs on failure
+        if: failure()
+        run: |
+          cd deploy
+          docker compose logs --no-color > /tmp/compose-logs.txt
+          docker compose ps --all > /tmp/compose-ps.txt
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-sanity-gate-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/compose-logs.txt
+            /tmp/compose-ps.txt
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Scrubber UI</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1>Privacy Scrubber</h1>
+        <p class="muted">Operator UI (MVP)</p>
+      </header>
+
+      <section class="card">
+        <h2>Auth</h2>
+        <div id="auth-status" class="status hidden"></div>
+        <form id="login-form">
+          <label>Email</label>
+          <input id="email" type="email" required />
+
+          <label>Password</label>
+          <input id="password" type="password" required />
+
+          <label>MFA Code (optional)</label>
+          <input id="mfa_code" type="text" placeholder="123456" />
+
+          <button type="submit">Login</button>
+        </form>
+        <div class="row">
+          <button id="login-passkey-btn" type="button">Login With Passkey</button>
+          <button id="logout-btn" type="button">Logout</button>
+          <button id="me-btn" type="button">Refresh Me</button>
+        </div>
+        <pre id="auth-output"></pre>
+      </section>
+
+      <section class="card">
+        <h2>MFA / TOTP</h2>
+        <div id="mfa-status" class="status hidden"></div>
+        <div class="row">
+          <button id="mfa-status-btn" type="button">Load MFA Status</button>
+          <button id="totp-setup-btn" type="button">Start TOTP Setup</button>
+        </div>
+        <div class="row">
+          <input id="totp_verify_code" type="text" placeholder="Verify setup code" />
+          <button id="totp-verify-btn" type="button">Verify Setup</button>
+        </div>
+        <div class="row">
+          <input id="totp_disable_password" type="password" placeholder="Password to disable" />
+          <input id="totp_disable_code" type="text" placeholder="Current code (if required)" />
+          <button id="totp-disable-btn" type="button">Disable TOTP</button>
+        </div>
+        <pre id="mfa-output"></pre>
+      </section>
+
+      <section class="card">
+        <h2>MFA / WebAuthn Passkeys</h2>
+        <div id="webauthn-status" class="status hidden"></div>
+        <div class="row">
+          <input id="webauthn_nickname" type="text" placeholder="Credential nickname (optional)" />
+          <button id="webauthn-setup-btn" type="button">Enroll Passkey</button>
+          <button id="webauthn-list-btn" type="button">List Passkeys</button>
+        </div>
+        <div class="row">
+          <select id="webauthn_credential_select">
+            <option value="">Select passkey…</option>
+          </select>
+          <button id="webauthn-use-selected-btn" type="button">Show Selected</button>
+        </div>
+        <div class="row">
+          <button id="webauthn-copy-id-btn" type="button">Copy Selected ID</button>
+          <button id="webauthn-details-btn" type="button">Reveal Details</button>
+        </div>
+        <div class="row">
+          <input id="webauthn_delete_password" type="password" placeholder="Password to confirm delete" />
+          <button id="webauthn-delete-btn" type="button">Delete Selected Passkey</button>
+        </div>
+        <pre id="webauthn-output"></pre>
+      </section>
+
+      <section class="card">
+        <h2>Users (admin/owner)</h2>
+        <div id="users-status" class="status hidden"></div>
+        <div class="row">
+          <button id="users-btn" type="button">Load Users</button>
+        </div>
+        <pre id="users-output"></pre>
+      </section>
+
+      <section class="card">
+        <h2>API Keys (admin/owner)</h2>
+        <div id="api-keys-status" class="status hidden"></div>
+        <div class="row">
+          <button id="api-keys-load-btn" type="button">Load API Keys</button>
+        </div>
+        <div class="row">
+          <select id="api-key-select">
+            <option value="">Select API key…</option>
+          </select>
+        </div>
+        <div class="row">
+          <button id="api-key-details-btn" type="button">Show Selected</button>
+          <button id="api-key-rotate-btn" type="button">Rotate Selected</button>
+          <button id="api-key-revoke-btn" type="button">Revoke Selected</button>
+        </div>
+
+        <label for="api-key-name">New Key Name</label>
+        <input id="api-key-name" type="text" placeholder="automation-main" />
+
+        <label for="api-key-role">Role</label>
+        <select id="api-key-role">
+          <option value="system" selected>system</option>
+          <option value="owner">owner</option>
+          <option value="admin">admin</option>
+          <option value="operator">operator</option>
+          <option value="reviewer">reviewer</option>
+          <option value="viewer">viewer</option>
+        </select>
+
+        <label for="api-key-prefixes">Allowed Path Prefixes (comma separated)</label>
+        <input id="api-key-prefixes" type="text" placeholder="/v1/version,/v1/jobs" />
+
+        <label for="api-key-expires-at">Expires At (optional ISO-8601)</label>
+        <input id="api-key-expires-at" type="text" placeholder="2026-12-31T23:59:59Z" />
+
+        <div class="row">
+          <button id="api-key-create-btn" type="button">Create API Key</button>
+        </div>
+
+        <label for="api-key-plaintext">Plaintext Key (shown once)</label>
+        <div class="row">
+          <input id="api-key-plaintext" type="text" readonly placeholder="Appears after create/rotate" />
+          <button id="api-key-copy-btn" type="button">Copy Key</button>
+        </div>
+
+        <pre id="api-keys-output"></pre>
+      </section>
+    </main>
+
+    <script src="/ui/app.js"></script>
+  </body>
+</html>

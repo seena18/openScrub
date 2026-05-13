@@ -1,0 +1,181 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-privacy_scrubber}
+      POSTGRES_USER: ${POSTGRES_USER:-privacy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-privacy_change_me}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-privacy} -d ${POSTGRES_DB:-privacy_scrubber}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_change_me}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: core/Dockerfile
+    command: ["python", "-m", "core.migrate"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://privacy:privacy_change_me@postgres:5432/privacy_scrubber}
+      SCHEMA_PATH: /app/docs/database-schema.sql
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: core/Dockerfile
+    command: ["uvicorn", "core.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://privacy:privacy_change_me@postgres:5432/privacy_scrubber}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-http://minio:9000}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-scrubber-evidence}
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:-minio}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-minio_change_me}
+      OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
+      OBJECT_STORAGE_PUBLIC_BASE_URL: ${OBJECT_STORAGE_PUBLIC_BASE_URL:-}
+      API_BEARER_TOKEN: ${API_BEARER_TOKEN:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_EXPIRES_MINUTES: ${JWT_EXPIRES_MINUTES:-60}
+      REFRESH_JWT_EXPIRES_MINUTES: ${REFRESH_JWT_EXPIRES_MINUTES:-10080}
+      ALLOW_SELF_REGISTER: ${ALLOW_SELF_REGISTER:-false}
+      IDENTIFIER_ENCRYPTION_KEY: ${IDENTIFIER_ENCRYPTION_KEY:-}
+      PASSWORD_RESET_TOKEN_TTL_MINUTES: ${PASSWORD_RESET_TOKEN_TTL_MINUTES:-30}
+      ENABLE_INSECURE_RESET_TOKEN_RESPONSE: ${ENABLE_INSECURE_RESET_TOKEN_RESPONSE:-false}
+      MFA_POLICY_MODE: ${MFA_POLICY_MODE:-off}
+      MFA_PRIVILEGED_ROLES: ${MFA_PRIVILEGED_ROLES:-owner,admin}
+      MFA_TOTP_ISSUER: ${MFA_TOTP_ISSUER:-Privacy Scrubber}
+      MFA_TOTP_VALID_WINDOW: ${MFA_TOTP_VALID_WINDOW:-1}
+      MFA_TOTP_DISABLE_REQUIRES_CODE: ${MFA_TOTP_DISABLE_REQUIRES_CODE:-true}
+      MFA_TOTP_ENCRYPTION_KEY: ${MFA_TOTP_ENCRYPTION_KEY:-}
+      MFA_WEBAUTHN_RP_ID: ${MFA_WEBAUTHN_RP_ID:-localhost}
+      MFA_WEBAUTHN_RP_NAME: ${MFA_WEBAUTHN_RP_NAME:-Privacy Scrubber}
+      MFA_WEBAUTHN_ORIGINS: ${MFA_WEBAUTHN_ORIGINS:-https://localhost}
+      MFA_WEBAUTHN_CHALLENGE_TTL_SECONDS: ${MFA_WEBAUTHN_CHALLENGE_TTL_SECONDS:-300}
+      MFA_WEBAUTHN_TIMEOUT_MS: ${MFA_WEBAUTHN_TIMEOUT_MS:-60000}
+      RATE_LIMIT_REGISTER_MAX_ATTEMPTS: ${RATE_LIMIT_REGISTER_MAX_ATTEMPTS:-8}
+      RATE_LIMIT_REGISTER_WINDOW_SECONDS: ${RATE_LIMIT_REGISTER_WINDOW_SECONDS:-3600}
+      RATE_LIMIT_LOGIN_MAX_ATTEMPTS: ${RATE_LIMIT_LOGIN_MAX_ATTEMPTS:-10}
+      RATE_LIMIT_LOGIN_WINDOW_SECONDS: ${RATE_LIMIT_LOGIN_WINDOW_SECONDS:-300}
+      RATE_LIMIT_WEBAUTHN_VERIFY_SETUP_MAX_ATTEMPTS: ${RATE_LIMIT_WEBAUTHN_VERIFY_SETUP_MAX_ATTEMPTS:-10}
+      RATE_LIMIT_WEBAUTHN_VERIFY_SETUP_WINDOW_SECONDS: ${RATE_LIMIT_WEBAUTHN_VERIFY_SETUP_WINDOW_SECONDS:-300}
+      RATE_LIMIT_WEBAUTHN_FINISH_MAX_ATTEMPTS: ${RATE_LIMIT_WEBAUTHN_FINISH_MAX_ATTEMPTS:-10}
+      RATE_LIMIT_WEBAUTHN_FINISH_WINDOW_SECONDS: ${RATE_LIMIT_WEBAUTHN_FINISH_WINDOW_SECONDS:-300}
+      RATE_LIMIT_REFRESH_MAX_ATTEMPTS: ${RATE_LIMIT_REFRESH_MAX_ATTEMPTS:-30}
+      RATE_LIMIT_REFRESH_WINDOW_SECONDS: ${RATE_LIMIT_REFRESH_WINDOW_SECONDS:-300}
+      RATE_LIMIT_LOGOUT_MAX_ATTEMPTS: ${RATE_LIMIT_LOGOUT_MAX_ATTEMPTS:-60}
+      RATE_LIMIT_LOGOUT_WINDOW_SECONDS: ${RATE_LIMIT_LOGOUT_WINDOW_SECONDS:-300}
+      RATE_LIMIT_CHANGE_PASSWORD_MAX_ATTEMPTS: ${RATE_LIMIT_CHANGE_PASSWORD_MAX_ATTEMPTS:-10}
+      RATE_LIMIT_CHANGE_PASSWORD_WINDOW_SECONDS: ${RATE_LIMIT_CHANGE_PASSWORD_WINDOW_SECONDS:-900}
+      RATE_LIMIT_PASSWORD_RESET_REQUEST_MAX_ATTEMPTS: ${RATE_LIMIT_PASSWORD_RESET_REQUEST_MAX_ATTEMPTS:-6}
+      RATE_LIMIT_PASSWORD_RESET_REQUEST_WINDOW_SECONDS: ${RATE_LIMIT_PASSWORD_RESET_REQUEST_WINDOW_SECONDS:-900}
+      RATE_LIMIT_PASSWORD_RESET_MAX_ATTEMPTS: ${RATE_LIMIT_PASSWORD_RESET_MAX_ATTEMPTS:-10}
+      RATE_LIMIT_PASSWORD_RESET_WINDOW_SECONDS: ${RATE_LIMIT_PASSWORD_RESET_WINDOW_SECONDS:-900}
+      RATE_LIMIT_REDIS_PREFIX: ${RATE_LIMIT_REDIS_PREFIX:-rl}
+      ADAPTERS_PATH: /app/adapters
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3).read()\"",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+  integration-tests:
+    build:
+      context: ..
+      dockerfile: tests/Dockerfile
+    working_dir: /app
+    command: ["pytest", "-q", "tests/integration"]
+    environment:
+      API_BASE: ${TEST_API_BASE:-http://api:8080}
+      API_BEARER_TOKEN: ${TEST_API_BEARER_TOKEN:-change-me-automation-token}
+      DATABASE_URL: ${TEST_DATABASE_URL:-postgresql://privacy:privacy_change_me@postgres:5432/privacy_scrubber}
+      MFA_POLICY_MODE_TEST: ${MFA_POLICY_MODE:-off}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: core/Dockerfile
+    command: ["python", "-m", "workers.runner"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://privacy:privacy_change_me@postgres:5432/privacy_scrubber}
+      WORKER_INTERVAL_SECONDS: ${WORKER_INTERVAL_SECONDS:-10}
+      ADAPTER_RUN_TIMEOUT_SECONDS: ${ADAPTER_RUN_TIMEOUT_SECONDS:-120}
+      RETENTION_CLEANUP_ENABLED: ${RETENTION_CLEANUP_ENABLED:-true}
+      RETENTION_CLEANUP_INTERVAL_SECONDS: ${RETENTION_CLEANUP_INTERVAL_SECONDS:-3600}
+      RETENTION_CLEANUP_DRY_RUN: ${RETENTION_CLEANUP_DRY_RUN:-true}
+      RETENTION_CLEANUP_REVOKED_REFRESH_GRACE_DAYS: ${RETENTION_CLEANUP_REVOKED_REFRESH_GRACE_DAYS:-7}
+      RETENTION_CLEANUP_INCLUDE_ADAPTER_ARTIFACTS: ${RETENTION_CLEANUP_INCLUDE_ADAPTER_ARTIFACTS:-false}
+      RETENTION_CLEANUP_ADAPTER_ARTIFACT_MAX_AGE_DAYS: ${RETENTION_CLEANUP_ADAPTER_ARTIFACT_MAX_AGE_DAYS:-30}
+      RETENTION_CLEANUP_INCLUDE_IDEMPOTENCY_KEYS: ${RETENTION_CLEANUP_INCLUDE_IDEMPOTENCY_KEYS:-true}
+      RETENTION_CLEANUP_IDEMPOTENCY_MAX_AGE_DAYS: ${RETENTION_CLEANUP_IDEMPOTENCY_MAX_AGE_DAYS:-30}
+      ADAPTERS_PATH: /app/adapters
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-http://minio:9000}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-scrubber-evidence}
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:-minio}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-minio_change_me}
+      OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
+      OBJECT_STORAGE_PUBLIC_BASE_URL: ${OBJECT_STORAGE_PUBLIC_BASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pg_data:
+  minio_data:
+  redis_data:
