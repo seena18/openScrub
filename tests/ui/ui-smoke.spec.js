@@ -136,6 +136,55 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
     });
   });
 
+  await page.route("**/v1/tasks?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: "task_1",
+            finding_id: "finding_1",
+            adapter_id: null,
+            adapter_key: "manual_test_adapter",
+            assigned_user_id: null,
+            status: "open",
+            due_at: "2026-05-20T00:00:00Z",
+            completed_at: null,
+            result_summary: null,
+            metadata: {},
+            created_at: "2026-05-13T00:00:00Z",
+            updated_at: "2026-05-13T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      }),
+    });
+  });
+
+  await page.route("**/v1/reminders?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: "reminder_1",
+            profile_id: "profile_1",
+            finding_id: "finding_1",
+            reminder_type: "recheck",
+            next_run_at: "2026-06-01T00:00:00Z",
+            interval_days: 30,
+            enabled: true,
+            metadata: { channel: "email" },
+            created_at: "2026-05-13T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      }),
+    });
+  });
+
   await page.goto("/ui");
 
   await expect(page.getByRole("button", { name: "Login With Passkey" })).toBeVisible();
@@ -147,6 +196,8 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
   await expect(page.getByRole("button", { name: "Load Audit Log" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Load Profiles" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Load Findings" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Load Tasks" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Load Reminders" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export Filtered JSON" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy Curl Example" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear Sensitive UI Data" })).toBeVisible();
@@ -178,6 +229,12 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
 
   await page.getByRole("button", { name: "Load Findings" }).click();
   await expect(page.locator("#findings-output")).toContainText("finding_1");
+
+  await page.getByRole("button", { name: "Load Tasks" }).click();
+  await expect(page.locator("#tasks-output")).toContainText("task_1");
+
+  await page.getByRole("button", { name: "Load Reminders" }).click();
+  await expect(page.locator("#reminders-output")).toContainText("reminder_1");
 
   await page.getByRole("button", { name: "Clear Sensitive UI Data" }).click();
   await expect(page.locator("#api-keys-output")).toContainText("cleared");

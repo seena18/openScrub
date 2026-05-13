@@ -11,6 +11,10 @@ let profileCache = [];
 let selectedProfileIdentifiersCache = [];
 let findingCache = [];
 let findingsNextCursor = null;
+let taskCache = [];
+let tasksNextCursor = null;
+let reminderCache = [];
+let remindersNextCursor = null;
 
 function accessToken() {
   return localStorage.getItem(accessStorageKey) || "";
@@ -79,15 +83,23 @@ function renderSessionState({
   sessionStatus,
   profilesStatus,
   findingsStatus,
+  tasksStatus,
+  remindersStatus,
   usersStatus,
   apiKeysStatus,
   auditStatus,
   profilesOut,
   findingsOut,
+  tasksOut,
+  remindersOut,
   usersOut,
   apiKeysOut,
   auditOut,
 }) {
+  tasksStatus = tasksStatus || document.getElementById("tasks-status");
+  remindersStatus = remindersStatus || document.getElementById("reminders-status");
+  tasksOut = tasksOut || document.getElementById("tasks-output");
+  remindersOut = remindersOut || document.getElementById("reminders-output");
   const user = sessionUser();
   sessionStatus.className = "status info";
   sessionStatus.textContent = summarizeSession(user);
@@ -99,6 +111,12 @@ function renderSessionState({
     findingCache = [];
     findingsNextCursor = null;
     renderFindingPicker([]);
+    taskCache = [];
+    tasksNextCursor = null;
+    renderTaskPicker([]);
+    reminderCache = [];
+    remindersNextCursor = null;
+    renderReminderPicker([]);
     usersCache = [];
     renderUserPicker([]);
     apiKeyCache = [];
@@ -107,6 +125,8 @@ function renderSessionState({
     auditNextCursor = null;
     if (profilesOut) profilesOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (findingsOut) findingsOut.textContent = pretty({ status: "info", detail: "Login required." });
+    if (tasksOut) tasksOut.textContent = pretty({ status: "info", detail: "Login required." });
+    if (remindersOut) remindersOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (usersOut) usersOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (apiKeysOut) apiKeysOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (auditOut) auditOut.textContent = pretty({ status: "info", detail: "Login required." });
@@ -120,6 +140,12 @@ function renderSessionState({
   }
   if (findingsStatus && !["owner", "admin", "reviewer", "operator", "viewer", "system"].includes(role)) {
     setStatus(findingsStatus, "info", "Findings panel requires authenticated role access.");
+  }
+  if (tasksStatus && !["owner", "admin", "reviewer", "operator", "viewer", "system"].includes(role)) {
+    setStatus(tasksStatus, "info", "Tasks panel requires authenticated role access.");
+  }
+  if (remindersStatus && !["owner", "admin", "reviewer", "operator", "viewer", "system"].includes(role)) {
+    setStatus(remindersStatus, "info", "Reminders panel requires authenticated role access.");
   }
   if (!hasPrivilegedRole(user)) {
     setStatus(usersStatus, "info", "Users panel requires owner/admin/system role.");
@@ -406,6 +432,76 @@ function findSelectedFinding() {
   return findingCache.find((x) => x.id === selectedId) || null;
 }
 
+function summarizeTask(item) {
+  const status = item.status || "unknown";
+  const adapter = item.adapter_key || "no-adapter";
+  const due = item.due_at || "no-due";
+  return `${status} • ${adapter} • due:${due}`;
+}
+
+function renderTaskPicker(items) {
+  const select = document.getElementById("tasks-select");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select task…";
+  select.appendChild(placeholder);
+
+  for (const item of items || []) {
+    const opt = document.createElement("option");
+    opt.value = item.id;
+    opt.textContent = summarizeTask(item);
+    select.appendChild(opt);
+  }
+
+  if (current && items.some((x) => x.id === current)) {
+    select.value = current;
+  }
+}
+
+function findSelectedTask() {
+  const selectedId = document.getElementById("tasks-select").value;
+  return taskCache.find((x) => x.id === selectedId) || null;
+}
+
+function summarizeReminder(item) {
+  const t = item.reminder_type || "unknown";
+  const enabled = item.enabled ? "enabled" : "disabled";
+  const nextRun = item.next_run_at || "n/a";
+  return `${t} • ${enabled} • next:${nextRun}`;
+}
+
+function renderReminderPicker(items) {
+  const select = document.getElementById("reminders-select");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select reminder…";
+  select.appendChild(placeholder);
+
+  for (const item of items || []) {
+    const opt = document.createElement("option");
+    opt.value = item.id;
+    opt.textContent = summarizeReminder(item);
+    select.appendChild(opt);
+  }
+
+  if (current && items.some((x) => x.id === current)) {
+    select.value = current;
+  }
+}
+
+function findSelectedReminder() {
+  const selectedId = document.getElementById("reminders-select").value;
+  return reminderCache.find((x) => x.id === selectedId) || null;
+}
+
 function renderUserPicker(items) {
   const select = document.getElementById("users-select");
   if (!select) return;
@@ -663,6 +759,86 @@ async function loadFindingsPage(findingsOut, { cursor = "", append = false } = {
   return data;
 }
 
+function getTaskFilters() {
+  return {
+    status: document.getElementById("tasks-filter-status").value.trim(),
+    findingId: document.getElementById("tasks-filter-finding-id").value.trim(),
+  };
+}
+
+async function loadTasksPage(tasksOut, { cursor = "", append = false } = {}) {
+  const filters = getTaskFilters();
+  const params = new URLSearchParams();
+  params.set("limit", "100");
+  if (cursor) params.set("cursor", cursor);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.findingId) params.set("finding_id", filters.findingId);
+  const data = await api(`/v1/tasks?${params.toString()}`);
+  const items = data.items || [];
+  taskCache = append ? [...taskCache, ...items] : items;
+  tasksNextCursor = data.next_cursor || null;
+  renderTaskPicker(taskCache);
+  tasksOut.textContent = pretty({
+    filters,
+    count: taskCache.length,
+    next_cursor: tasksNextCursor,
+    items: taskCache,
+  });
+  return data;
+}
+
+function getReminderFilters() {
+  const enabledRaw = document.getElementById("reminders-filter-enabled").value.trim();
+  let enabled = null;
+  if (enabledRaw === "true") enabled = true;
+  if (enabledRaw === "false") enabled = false;
+  return {
+    profileId: document.getElementById("reminders-filter-profile-id").value.trim(),
+    enabled,
+    enabled_raw: enabledRaw,
+  };
+}
+
+async function loadRemindersPage(remindersOut, { cursor = "", append = false } = {}) {
+  const filters = getReminderFilters();
+  const params = new URLSearchParams();
+  params.set("limit", "100");
+  if (cursor) params.set("cursor", cursor);
+  if (filters.profileId) params.set("profile_id", filters.profileId);
+  if (filters.enabled !== null) params.set("enabled", String(filters.enabled));
+  const data = await api(`/v1/reminders?${params.toString()}`);
+  const items = data.items || [];
+  reminderCache = append ? [...reminderCache, ...items] : items;
+  remindersNextCursor = data.next_cursor || null;
+  renderReminderPicker(reminderCache);
+  remindersOut.textContent = pretty({
+    filters: { profile_id: filters.profileId || null, enabled: filters.enabled },
+    count: reminderCache.length,
+    next_cursor: remindersNextCursor,
+    items: reminderCache,
+  });
+  return data;
+}
+
+function parseJsonInput(raw, fieldName) {
+  const value = String(raw || "").trim();
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error(`${fieldName} must be a JSON object`);
+    }
+    return parsed;
+  } catch (err) {
+    throw {
+      status: 400,
+      body: {
+        detail: `invalid ${fieldName}: ${errMessage(err)}`,
+      },
+    };
+  }
+}
+
 function getAuditFilters() {
   const fromValue = document.getElementById("audit-filter-from").value.trim();
   const toValue = document.getElementById("audit-filter-to").value.trim();
@@ -801,6 +977,8 @@ function bind() {
   const webauthnOut = document.getElementById("webauthn-output");
   const profilesOut = document.getElementById("profiles-output");
   const findingsOut = document.getElementById("findings-output");
+  const tasksOut = document.getElementById("tasks-output");
+  const remindersOut = document.getElementById("reminders-output");
   const usersOut = document.getElementById("users-output");
   const auditOut = document.getElementById("audit-output");
   const apiKeyPreviewOut = document.getElementById("api-key-preview-output");
@@ -812,6 +990,8 @@ function bind() {
   const webauthnStatus = document.getElementById("webauthn-status");
   const profilesStatus = document.getElementById("profiles-status");
   const findingsStatus = document.getElementById("findings-status");
+  const tasksStatus = document.getElementById("tasks-status");
+  const remindersStatus = document.getElementById("reminders-status");
   const usersStatus = document.getElementById("users-status");
   const auditStatus = document.getElementById("audit-status");
   const apiKeysStatus = document.getElementById("api-keys-status");
@@ -822,6 +1002,8 @@ function bind() {
   clearStatus(webauthnStatus);
   clearStatus(profilesStatus);
   clearStatus(findingsStatus);
+  clearStatus(tasksStatus);
+  clearStatus(remindersStatus);
   clearStatus(usersStatus);
   clearStatus(auditStatus);
   clearStatus(apiKeysStatus);
@@ -831,11 +1013,15 @@ function bind() {
     sessionStatus,
     profilesStatus,
     findingsStatus,
+    tasksStatus,
+    remindersStatus,
     usersStatus,
     apiKeysStatus,
     auditStatus,
     profilesOut,
     findingsOut,
+    tasksOut,
+    remindersOut,
     usersOut,
     apiKeysOut,
     auditOut,
@@ -1221,6 +1407,8 @@ function bind() {
       return;
     }
     document.getElementById("findings-filter-profile-id").value = selected.id;
+    document.getElementById("reminders-filter-profile-id").value = selected.id;
+    document.getElementById("reminder-create-profile-id").value = selected.id;
     profilesOut.textContent = pretty({
       selected_profile: selected,
       selected_profile_identifiers: selectedProfileIdentifiersCache,
@@ -1358,6 +1546,9 @@ function bind() {
     document.getElementById("findings-update-status").value = selected.status || "";
     document.getElementById("findings-update-risk").value = selected.risk_score ?? "";
     document.getElementById("findings-update-notes").value = selected.notes || "";
+    document.getElementById("tasks-filter-finding-id").value = selected.id;
+    document.getElementById("task-create-finding-id").value = selected.id;
+    document.getElementById("reminder-create-finding-id").value = selected.id;
   });
 
   document.getElementById("findings-show-btn").addEventListener("click", () => {
@@ -1418,6 +1609,329 @@ function bind() {
           updated,
           current_items: findingCache,
           next_cursor: findingsNextCursor,
+        });
+        return updated;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("tasks-load-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    await runTask({
+      button,
+      statusEl: tasksStatus,
+      loadingText: "Loading tasks…",
+      successText: "Tasks loaded.",
+      outputEl: tasksOut,
+      task: async () => loadTasksPage(tasksOut, { cursor: "", append: false }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("tasks-next-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    if (!tasksNextCursor) {
+      tasksOut.textContent = pretty({
+        status: "info",
+        detail: "No next tasks page available. Load tasks first or end reached.",
+      });
+      setStatus(tasksStatus, "info", "No next tasks page.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: tasksStatus,
+      loadingText: "Loading next tasks page…",
+      successText: "Next tasks page loaded.",
+      outputEl: tasksOut,
+      task: async () => loadTasksPage(tasksOut, { cursor: tasksNextCursor, append: true }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("tasks-reset-btn").addEventListener("click", () => {
+    taskCache = [];
+    tasksNextCursor = null;
+    renderTaskPicker([]);
+    document.getElementById("tasks-filter-status").value = "";
+    document.getElementById("tasks-filter-finding-id").value = "";
+    tasksOut.textContent = pretty({ status: "ok", detail: "Tasks view reset." });
+    setStatus(tasksStatus, "info", "Tasks view reset.");
+  });
+
+  document.getElementById("tasks-select").addEventListener("change", () => {
+    const selected = findSelectedTask();
+    if (!selected) return;
+    document.getElementById("task-update-status").value = selected.status || "";
+    document.getElementById("task-update-due-at").value = selected.due_at || "";
+    document.getElementById("task-update-result-summary").value = selected.result_summary || "";
+    document.getElementById("task-update-assigned-user-id").value = selected.assigned_user_id || "";
+    document.getElementById("task-queue-adapter-key").value = selected.adapter_key || "";
+  });
+
+  document.getElementById("tasks-show-btn").addEventListener("click", () => {
+    const selected = findSelectedTask();
+    if (!selected) {
+      tasksOut.textContent = pretty({ status: "info", detail: "No task selected." });
+      setStatus(tasksStatus, "info", "Select a task.");
+      return;
+    }
+    tasksOut.textContent = pretty(selected);
+    setStatus(tasksStatus, "success", "Showing selected task.");
+  });
+
+  document.getElementById("task-create-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const findingId = document.getElementById("task-create-finding-id").value.trim();
+    const adapterKey = document.getElementById("task-create-adapter-key").value.trim();
+    const dueAt = document.getElementById("task-create-due-at").value.trim();
+    if (!findingId) {
+      tasksOut.textContent = pretty({ error: "finding_id is required" });
+      setStatus(tasksStatus, "error", "Set finding_id before creating task.");
+      return;
+    }
+    const payload = { finding_id: findingId };
+    if (adapterKey) payload.adapter_key = adapterKey;
+    if (dueAt) payload.due_at = dueAt;
+
+    await runTask({
+      button,
+      statusEl: tasksStatus,
+      loadingText: "Creating task…",
+      successText: "Task created.",
+      outputEl: tasksOut,
+      task: async () => {
+        const created = await api("/v1/tasks", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        await loadTasksPage(tasksOut, { cursor: "", append: false });
+        return created;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("task-queue-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedTask();
+    if (!selected) {
+      tasksOut.textContent = pretty({ error: "Select a task first." });
+      setStatus(tasksStatus, "error", "Select a task to queue.");
+      return;
+    }
+    const adapterKey = document.getElementById("task-queue-adapter-key").value.trim();
+    const action = document.getElementById("task-queue-action").value.trim() || "submit_opt_out";
+    if (!adapterKey) {
+      tasksOut.textContent = pretty({ error: "adapter_key is required for queue action." });
+      setStatus(tasksStatus, "error", "Set adapter_key before queueing.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: tasksStatus,
+      loadingText: "Queueing adapter run…",
+      successText: "Adapter run queued.",
+      outputEl: tasksOut,
+      task: async () => {
+        const queued = await api(`/v1/tasks/${encodeURIComponent(selected.id)}/queue-adapter-run`, {
+          method: "POST",
+          body: JSON.stringify({ adapter_key: adapterKey, action }),
+        });
+        await loadTasksPage(tasksOut, { cursor: "", append: false });
+        return queued;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("task-update-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedTask();
+    if (!selected) {
+      tasksOut.textContent = pretty({ error: "Select a task first." });
+      setStatus(tasksStatus, "error", "Select a task to update.");
+      return;
+    }
+    const statusValue = document.getElementById("task-update-status").value.trim();
+    const dueAtValue = document.getElementById("task-update-due-at").value.trim();
+    const resultSummary = document.getElementById("task-update-result-summary").value.trim();
+    const assignedUserId = document.getElementById("task-update-assigned-user-id").value.trim();
+    const payload = {};
+    if (statusValue) payload.status = statusValue;
+    if (dueAtValue) payload.due_at = dueAtValue;
+    if (resultSummary) payload.result_summary = resultSummary;
+    if (assignedUserId) payload.assigned_user_id = assignedUserId;
+    if (Object.keys(payload).length === 0) {
+      tasksOut.textContent = pretty({ status: "info", detail: "No update fields set." });
+      setStatus(tasksStatus, "info", "Set at least one field to update.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: tasksStatus,
+      loadingText: "Updating task…",
+      successText: "Task updated.",
+      outputEl: tasksOut,
+      task: async () => {
+        const updated = await api(`/v1/tasks/${encodeURIComponent(selected.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        const idx = taskCache.findIndex((x) => x.id === selected.id);
+        if (idx >= 0) taskCache[idx] = { ...taskCache[idx], ...updated };
+        renderTaskPicker(taskCache);
+        tasksOut.textContent = pretty({
+          updated,
+          current_items: taskCache,
+          next_cursor: tasksNextCursor,
+        });
+        return updated;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("reminders-load-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    await runTask({
+      button,
+      statusEl: remindersStatus,
+      loadingText: "Loading reminders…",
+      successText: "Reminders loaded.",
+      outputEl: remindersOut,
+      task: async () => loadRemindersPage(remindersOut, { cursor: "", append: false }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("reminders-next-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    if (!remindersNextCursor) {
+      remindersOut.textContent = pretty({
+        status: "info",
+        detail: "No next reminders page available. Load reminders first or end reached.",
+      });
+      setStatus(remindersStatus, "info", "No next reminders page.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: remindersStatus,
+      loadingText: "Loading next reminders page…",
+      successText: "Next reminders page loaded.",
+      outputEl: remindersOut,
+      task: async () => loadRemindersPage(remindersOut, { cursor: remindersNextCursor, append: true }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("reminders-reset-btn").addEventListener("click", () => {
+    reminderCache = [];
+    remindersNextCursor = null;
+    renderReminderPicker([]);
+    document.getElementById("reminders-filter-profile-id").value = "";
+    document.getElementById("reminders-filter-enabled").value = "";
+    remindersOut.textContent = pretty({ status: "ok", detail: "Reminders view reset." });
+    setStatus(remindersStatus, "info", "Reminders view reset.");
+  });
+
+  document.getElementById("reminders-select").addEventListener("change", () => {
+    const selected = findSelectedReminder();
+    if (!selected) return;
+    document.getElementById("reminder-update-next-run-at").value = selected.next_run_at || "";
+    document.getElementById("reminder-update-interval-days").value = selected.interval_days ?? "";
+    document.getElementById("reminder-update-enabled").value = String(selected.enabled);
+    document.getElementById("reminder-update-metadata").value = pretty(selected.metadata || {});
+  });
+
+  document.getElementById("reminders-show-btn").addEventListener("click", () => {
+    const selected = findSelectedReminder();
+    if (!selected) {
+      remindersOut.textContent = pretty({ status: "info", detail: "No reminder selected." });
+      setStatus(remindersStatus, "info", "Select a reminder.");
+      return;
+    }
+    remindersOut.textContent = pretty(selected);
+    setStatus(remindersStatus, "success", "Showing selected reminder.");
+  });
+
+  document.getElementById("reminder-create-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const profileId = document.getElementById("reminder-create-profile-id").value.trim();
+    const findingId = document.getElementById("reminder-create-finding-id").value.trim();
+    const reminderType = document.getElementById("reminder-create-type").value.trim();
+    const nextRunAt = document.getElementById("reminder-create-next-run-at").value.trim();
+    const intervalDaysRaw = document.getElementById("reminder-create-interval-days").value.trim();
+    const enabled = document.getElementById("reminder-create-enabled").checked;
+    const metadata = parseJsonInput(document.getElementById("reminder-create-metadata").value, "metadata");
+    if (!profileId || !reminderType || !nextRunAt) {
+      remindersOut.textContent = pretty({
+        error: "profile_id, reminder_type, and next_run_at are required.",
+      });
+      setStatus(remindersStatus, "error", "Set required reminder fields before create.");
+      return;
+    }
+    const payload = {
+      profile_id: profileId,
+      reminder_type: reminderType,
+      next_run_at: nextRunAt,
+      enabled,
+      metadata,
+    };
+    if (findingId) payload.finding_id = findingId;
+    if (intervalDaysRaw !== "") payload.interval_days = Number(intervalDaysRaw);
+    await runTask({
+      button,
+      statusEl: remindersStatus,
+      loadingText: "Creating reminder…",
+      successText: "Reminder created.",
+      outputEl: remindersOut,
+      task: async () => {
+        const created = await api("/v1/reminders", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        await loadRemindersPage(remindersOut, { cursor: "", append: false });
+        return created;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("reminder-update-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedReminder();
+    if (!selected) {
+      remindersOut.textContent = pretty({ error: "Select a reminder first." });
+      setStatus(remindersStatus, "error", "Select a reminder to update.");
+      return;
+    }
+    const nextRunAt = document.getElementById("reminder-update-next-run-at").value.trim();
+    const intervalDaysRaw = document.getElementById("reminder-update-interval-days").value.trim();
+    const enabledRaw = document.getElementById("reminder-update-enabled").value.trim();
+    const metadataRaw = document.getElementById("reminder-update-metadata").value;
+    const payload = {};
+    if (nextRunAt) payload.next_run_at = nextRunAt;
+    if (intervalDaysRaw !== "") payload.interval_days = Number(intervalDaysRaw);
+    if (enabledRaw === "true") payload.enabled = true;
+    if (enabledRaw === "false") payload.enabled = false;
+    if (String(metadataRaw || "").trim()) payload.metadata = parseJsonInput(metadataRaw, "metadata");
+    if (Object.keys(payload).length === 0) {
+      remindersOut.textContent = pretty({ status: "info", detail: "No update fields set." });
+      setStatus(remindersStatus, "info", "Set at least one field to update.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: remindersStatus,
+      loadingText: "Updating reminder…",
+      successText: "Reminder updated.",
+      outputEl: remindersOut,
+      task: async () => {
+        const updated = await api(`/v1/reminders/${encodeURIComponent(selected.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        const idx = reminderCache.findIndex((x) => x.id === selected.id);
+        if (idx >= 0) reminderCache[idx] = { ...reminderCache[idx], ...updated };
+        renderReminderPicker(reminderCache);
+        remindersOut.textContent = pretty({
+          updated,
+          current_items: reminderCache,
+          next_cursor: remindersNextCursor,
         });
         return updated;
       },
@@ -1837,12 +2351,42 @@ function bind() {
     document.getElementById("findings-update-risk").value = "";
     document.getElementById("findings-update-notes").value = "";
     document.getElementById("findings-update-status").value = "";
+    document.getElementById("tasks-filter-status").value = "";
+    document.getElementById("tasks-filter-finding-id").value = "";
+    document.getElementById("task-create-finding-id").value = "";
+    document.getElementById("task-create-adapter-key").value = "";
+    document.getElementById("task-create-due-at").value = "";
+    document.getElementById("task-queue-adapter-key").value = "";
+    document.getElementById("task-queue-action").value = "submit_opt_out";
+    document.getElementById("task-update-status").value = "";
+    document.getElementById("task-update-due-at").value = "";
+    document.getElementById("task-update-assigned-user-id").value = "";
+    document.getElementById("task-update-result-summary").value = "";
+    document.getElementById("reminders-filter-profile-id").value = "";
+    document.getElementById("reminders-filter-enabled").value = "";
+    document.getElementById("reminder-create-profile-id").value = "";
+    document.getElementById("reminder-create-finding-id").value = "";
+    document.getElementById("reminder-create-type").value = "recheck";
+    document.getElementById("reminder-create-next-run-at").value = "";
+    document.getElementById("reminder-create-interval-days").value = "";
+    document.getElementById("reminder-create-enabled").checked = true;
+    document.getElementById("reminder-create-metadata").value = "";
+    document.getElementById("reminder-update-next-run-at").value = "";
+    document.getElementById("reminder-update-interval-days").value = "";
+    document.getElementById("reminder-update-enabled").value = "";
+    document.getElementById("reminder-update-metadata").value = "";
 
     auditItemsCache = [];
     auditNextCursor = null;
     selectedProfileIdentifiersCache = [];
     findingCache = [];
     findingsNextCursor = null;
+    taskCache = [];
+    tasksNextCursor = null;
+    reminderCache = [];
+    remindersNextCursor = null;
+    renderTaskPicker([]);
+    renderReminderPicker([]);
     document.getElementById("audit-filter-action").value = "";
     document.getElementById("audit-filter-actor").value = "";
     document.getElementById("audit-filter-object").value = "";
@@ -1853,6 +2397,8 @@ function bind() {
     webauthnOut.textContent = pretty({ status: "ok", detail: "WebAuthn sensitive inputs cleared." });
     profilesOut.textContent = pretty({ status: "ok", detail: "Profile/identifier form inputs and selected identifier cache cleared." });
     findingsOut.textContent = pretty({ status: "ok", detail: "Findings cache and update inputs cleared." });
+    tasksOut.textContent = pretty({ status: "ok", detail: "Task cache and form inputs cleared." });
+    remindersOut.textContent = pretty({ status: "ok", detail: "Reminder cache and form inputs cleared." });
     auditOut.textContent = pretty({ status: "ok", detail: "Audit cache + filters cleared from UI state." });
     apiKeysOut.textContent = pretty({ status: "ok", detail: "API key plaintext and danger confirm cleared." });
     apiKeyPreviewOut.textContent = pretty({ status: "ok", detail: "Preview remains available; sensitive fields cleared." });

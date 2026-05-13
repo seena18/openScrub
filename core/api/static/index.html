@@ -187,6 +187,118 @@
       </section>
 
       <section class="card">
+        <h2>Tasks</h2>
+        <div id="tasks-status" class="status hidden"></div>
+        <div class="row">
+          <button id="tasks-load-btn" type="button">Load Tasks</button>
+          <button id="tasks-next-btn" type="button">Load Next Tasks Page</button>
+          <button id="tasks-reset-btn" type="button">Reset Tasks View</button>
+        </div>
+        <div class="row">
+          <select id="tasks-filter-status">
+            <option value="">Any status</option>
+            <option value="open">open</option>
+            <option value="in_progress">in_progress</option>
+            <option value="completed">completed</option>
+            <option value="failed">failed</option>
+            <option value="canceled">canceled</option>
+          </select>
+          <input id="tasks-filter-finding-id" type="text" placeholder="Filter finding_id (optional UUID)" />
+        </div>
+        <div class="row">
+          <select id="tasks-select">
+            <option value="">Select task…</option>
+          </select>
+          <button id="tasks-show-btn" type="button">Show Selected Task</button>
+        </div>
+        <label for="task-create-finding-id">Create Task Finding ID</label>
+        <input id="task-create-finding-id" type="text" placeholder="finding UUID (required)" />
+        <div class="row">
+          <input id="task-create-adapter-key" type="text" placeholder="adapter_key (optional)" />
+          <input id="task-create-due-at" type="text" placeholder="due_at (optional ISO-8601)" />
+          <button id="task-create-btn" type="button">Create Task</button>
+        </div>
+        <label for="task-queue-adapter-key">Queue Adapter Run</label>
+        <div class="row">
+          <input id="task-queue-adapter-key" type="text" placeholder="adapter_key (required)" />
+          <input id="task-queue-action" type="text" value="submit_opt_out" placeholder="action" />
+          <button id="task-queue-btn" type="button">Queue Selected Task</button>
+        </div>
+        <label for="task-update-result-summary">Update Selected Task</label>
+        <div class="row">
+          <select id="task-update-status">
+            <option value="">(no status change)</option>
+            <option value="open">open</option>
+            <option value="in_progress">in_progress</option>
+            <option value="completed">completed</option>
+            <option value="failed">failed</option>
+            <option value="canceled">canceled</option>
+          </select>
+          <input id="task-update-due-at" type="text" placeholder="due_at (optional ISO-8601)" />
+          <input id="task-update-assigned-user-id" type="text" placeholder="assigned_user_id (optional UUID)" />
+        </div>
+        <input id="task-update-result-summary" type="text" placeholder="result_summary (optional)" />
+        <div class="row">
+          <button id="task-update-btn" type="button">Update Selected Task</button>
+        </div>
+        <pre id="tasks-output"></pre>
+      </section>
+
+      <section class="card">
+        <h2>Reminders</h2>
+        <div id="reminders-status" class="status hidden"></div>
+        <div class="row">
+          <button id="reminders-load-btn" type="button">Load Reminders</button>
+          <button id="reminders-next-btn" type="button">Load Next Reminders Page</button>
+          <button id="reminders-reset-btn" type="button">Reset Reminders View</button>
+        </div>
+        <div class="row">
+          <input id="reminders-filter-profile-id" type="text" placeholder="Filter profile_id (optional UUID)" />
+          <select id="reminders-filter-enabled">
+            <option value="">Any enabled state</option>
+            <option value="true">enabled=true</option>
+            <option value="false">enabled=false</option>
+          </select>
+        </div>
+        <div class="row">
+          <select id="reminders-select">
+            <option value="">Select reminder…</option>
+          </select>
+          <button id="reminders-show-btn" type="button">Show Selected Reminder</button>
+        </div>
+        <label for="reminder-create-profile-id">Create Reminder</label>
+        <div class="row">
+          <input id="reminder-create-profile-id" type="text" placeholder="profile_id (required UUID)" />
+          <input id="reminder-create-finding-id" type="text" placeholder="finding_id (optional UUID)" />
+          <input id="reminder-create-type" type="text" value="recheck" placeholder="reminder_type" />
+        </div>
+        <div class="row">
+          <input id="reminder-create-next-run-at" type="text" placeholder="next_run_at (required ISO-8601)" />
+          <input id="reminder-create-interval-days" type="number" placeholder="interval_days (optional)" />
+          <label><input id="reminder-create-enabled" type="checkbox" checked /> Enabled</label>
+        </div>
+        <input id="reminder-create-metadata" type="text" placeholder='metadata JSON (optional), e.g. {"channel":"email"}' />
+        <div class="row">
+          <button id="reminder-create-btn" type="button">Create Reminder</button>
+        </div>
+        <label for="reminder-update-next-run-at">Update Selected Reminder</label>
+        <div class="row">
+          <input id="reminder-update-next-run-at" type="text" placeholder="next_run_at (optional ISO-8601)" />
+          <input id="reminder-update-interval-days" type="number" placeholder="interval_days (optional)" />
+          <select id="reminder-update-enabled">
+            <option value="">(no enabled change)</option>
+            <option value="true">Enable</option>
+            <option value="false">Disable</option>
+          </select>
+        </div>
+        <input id="reminder-update-metadata" type="text" placeholder='metadata JSON (optional), e.g. {"channel":"discord"}' />
+        <div class="row">
+          <button id="reminder-update-btn" type="button">Update Selected Reminder</button>
+        </div>
+        <pre id="reminders-output"></pre>
+      </section>
+
+      <section class="card">
         <h2>Users (admin/owner)</h2>
         <div id="users-status" class="status hidden"></div>
         <div class="row">
