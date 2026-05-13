@@ -17,6 +17,8 @@ Runnable self-host baseline with:
 
 ## Quickstart
 
+Canonical guide: [docs/quickstart.md](docs/quickstart.md)
+
 ```bash
 cd privacy-scrubber/deploy
 cp .env.example .env
@@ -390,6 +392,8 @@ scripts/pre-commit-adapter-gate.sh
 - Adapter Interface: [docs/adapter-interface.md](docs/adapter-interface.md)
 - Standards Baseline: [docs/STANDARDS.md](docs/STANDARDS.md)
 - Release Policy: [docs/release-policy.md](docs/release-policy.md)
+- Quickstart Guide: [docs/quickstart.md](docs/quickstart.md)
+- Production Hardening: [docs/production-hardening.md](docs/production-hardening.md)
 
 ## Audit Logging
 
