@@ -299,6 +299,122 @@
       </section>
 
       <section class="card">
+        <h2>Providers</h2>
+        <div id="providers-status" class="status hidden"></div>
+        <div class="row">
+          <button id="providers-load-btn" type="button">Load Providers</button>
+          <button id="providers-next-btn" type="button">Load Next Providers Page</button>
+          <button id="providers-reset-btn" type="button">Reset Providers View</button>
+        </div>
+        <div class="row">
+          <input id="providers-filter-kind" type="text" placeholder="Filter kind (optional)" />
+          <select id="providers-filter-enabled">
+            <option value="">Any enabled state</option>
+            <option value="true">enabled=true</option>
+            <option value="false">enabled=false</option>
+          </select>
+        </div>
+        <div class="row">
+          <select id="providers-select">
+            <option value="">Select provider…</option>
+          </select>
+          <button id="providers-show-btn" type="button">Show Selected Provider</button>
+        </div>
+        <label for="provider-create-key">Create Provider</label>
+        <div class="row">
+          <input id="provider-create-key" type="text" placeholder="key (required)" />
+          <input id="provider-create-kind" type="text" placeholder="kind (required)" />
+          <label><input id="provider-create-enabled" type="checkbox" checked /> Enabled</label>
+        </div>
+        <input id="provider-create-config" type="text" placeholder='config JSON (optional), e.g. {"base_url":"https://api.example.com"}' />
+        <div class="row">
+          <button id="provider-create-btn" type="button">Create Provider</button>
+        </div>
+        <label for="provider-update-kind">Update Selected Provider</label>
+        <div class="row">
+          <input id="provider-update-kind" type="text" placeholder="kind (optional)" />
+          <select id="provider-update-enabled">
+            <option value="">(no enabled change)</option>
+            <option value="true">Enable</option>
+            <option value="false">Disable</option>
+          </select>
+        </div>
+        <input id="provider-update-config" type="text" placeholder='config JSON (optional), e.g. {"api_key":"***"}' />
+        <div class="row">
+          <button id="provider-update-btn" type="button">Update Selected Provider</button>
+        </div>
+        <pre id="providers-output"></pre>
+      </section>
+
+      <section class="card">
+        <h2>Adapters</h2>
+        <div id="adapters-status" class="status hidden"></div>
+        <div class="row">
+          <button id="adapters-load-btn" type="button">Load Adapters</button>
+          <button id="adapters-next-btn" type="button">Load Next Adapters Page</button>
+          <button id="adapters-reset-btn" type="button">Reset Adapters View</button>
+        </div>
+        <div class="row">
+          <input id="adapters-filter-key" type="text" placeholder="Filter key (optional)" />
+          <select id="adapters-filter-enabled">
+            <option value="">Any enabled state</option>
+            <option value="true">enabled=true</option>
+            <option value="false">enabled=false</option>
+          </select>
+        </div>
+        <div class="row">
+          <select id="adapters-select">
+            <option value="">Select adapter…</option>
+          </select>
+          <button id="adapters-show-btn" type="button">Show Selected Adapter</button>
+        </div>
+        <label for="adapter-create-key">Create Adapter</label>
+        <div class="row">
+          <input id="adapter-create-key" type="text" placeholder="key (required)" />
+          <input id="adapter-create-display-name" type="text" placeholder="display_name (required)" />
+          <input id="adapter-create-domain" type="text" placeholder="domain (required)" />
+        </div>
+        <div class="row">
+          <select id="adapter-create-flow">
+            <option value="manual">manual</option>
+            <option value="headless">headless</option>
+            <option value="api">api</option>
+          </select>
+          <input id="adapter-create-version" type="text" value="0.0.1" placeholder="adapter_version" />
+          <label><input id="adapter-create-enabled" type="checkbox" checked /> Enabled</label>
+        </div>
+        <input id="adapter-create-metadata" type="text" placeholder='metadata JSON (optional), e.g. {"region":"us"}' />
+        <div class="row">
+          <button id="adapter-create-btn" type="button">Create Adapter</button>
+        </div>
+        <label for="adapter-update-display-name">Update Selected Adapter</label>
+        <div class="row">
+          <input id="adapter-update-display-name" type="text" placeholder="display_name (optional)" />
+          <input id="adapter-update-domain" type="text" placeholder="domain (optional)" />
+          <select id="adapter-update-flow">
+            <option value="">(no flow change)</option>
+            <option value="manual">manual</option>
+            <option value="headless">headless</option>
+            <option value="api">api</option>
+          </select>
+        </div>
+        <div class="row">
+          <input id="adapter-update-version" type="text" placeholder="adapter_version (optional)" />
+          <select id="adapter-update-enabled">
+            <option value="">(no enabled change)</option>
+            <option value="true">Enable</option>
+            <option value="false">Disable</option>
+          </select>
+          <input id="adapter-update-last-verified-at" type="text" placeholder="last_verified_at (optional ISO-8601)" />
+        </div>
+        <input id="adapter-update-metadata" type="text" placeholder='metadata JSON (optional), e.g. {"notes":"updated"}' />
+        <div class="row">
+          <button id="adapter-update-btn" type="button">Update Selected Adapter</button>
+        </div>
+        <pre id="adapters-output"></pre>
+      </section>
+
+      <section class="card">
         <h2>Users (admin/owner)</h2>
         <div id="users-status" class="status hidden"></div>
         <div class="row">
