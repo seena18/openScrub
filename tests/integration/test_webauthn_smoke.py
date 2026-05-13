@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 
-def test_webauthn_setup_start_and_status(api):
-    setup = api.json("POST", "/v1/auth/mfa/webauthn/setup", expected_status=200)
+def test_webauthn_setup_start_and_status(jwt_api):
+    setup = jwt_api.json("POST", "/v1/auth/mfa/webauthn/setup", expected_status=200)
     assert setup["status"] == "ok"
     assert setup["challenge_id"]
     assert setup["public_key"]["challenge"]
     assert setup["rp_id"]
     assert setup["origins"]
 
-    status = api.json("GET", "/v1/auth/mfa/totp/status", expected_status=200)
+    status = jwt_api.json("GET", "/v1/auth/mfa/totp/status", expected_status=200)
     assert "webauthn_configured" in status
     assert "webauthn_credential_count" in status
     assert isinstance(status["webauthn_credential_count"], int)

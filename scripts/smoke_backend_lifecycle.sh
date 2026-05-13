@@ -12,7 +12,11 @@ if [[ -f "$DEPLOY_DIR/.env" ]]; then
 fi
 
 API_BASE="${API_BASE:-http://localhost:8080}"
-TOKEN="${API_BEARER_TOKEN:-change-me-automation-token}"
+# Ensure compose receives a deterministic static bearer token for this smoke
+# run so privileged API operations don't depend on open-dev auth behavior.
+API_BEARER_TOKEN="${API_BEARER_TOKEN:-change-me-automation-token}"
+export API_BEARER_TOKEN
+TOKEN="$API_BEARER_TOKEN"
 DB_USER="${POSTGRES_USER:-privacy}"
 DB_NAME="${POSTGRES_DB:-privacy_scrubber}"
 TEST_PREFIX="${SMOKE_TEST_PREFIX:-lifecycle}"

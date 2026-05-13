@@ -79,7 +79,7 @@ def _create_owner_user(run_key: str) -> str:
     return user_id
 
 
-def _create_owner_user_with_password(run_key: str, password: str) -> tuple[str, str]:
+def _create_user_with_password(run_key: str, password: str, *, role: str = "owner") -> tuple[str, str]:
     psycopg2 = pytest.importorskip("psycopg2")
     passlib_context = pytest.importorskip("passlib.context")
     pwd_context = passlib_context.CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -90,11 +90,13 @@ def _create_owner_user_with_password(run_key: str, password: str) -> tuple[str, 
             cur.execute(
                 """
                 insert into users(email, password_hash, role, mfa_enabled)
-                values (%s, %s, 'owner', false)
-                on conflict (email) do update set password_hash = excluded.password_hash
+                values (%s, %s, %s, false)
+                on conflict (email) do update
+                  set password_hash = excluded.password_hash,
+                      role = excluded.role
                 returning id::text, email;
                 """,
-                (email, password_hash),
+                (email, password_hash, role),
             )
             row = cur.fetchone()
         conn.commit()
@@ -104,17 +106,10 @@ def _create_owner_user_with_password(run_key: str, password: str) -> tuple[str, 
 def _resolve_working_token(client: ApiClient) -> str:
     probe = client.request("GET", "/v1/auth/me")
     if probe.status_code == 200:
-        try:
-            payload = probe.json()
-        except Exception:
-            payload = {}
-        # WebAuthn and MFA endpoints require a real user principal; static
-        # automation bearer tokens intentionally have user_id=None.
-        if payload.get("user_id"):
-            return client.token
+        return client.token
 
     bootstrap_password = "PytestBootstrapPassw0rd!123"
-    _, email = _create_owner_user_with_password(uuid.uuid4().hex[:12], bootstrap_password)
+    _, email = _create_user_with_password(uuid.uuid4().hex[:12], bootstrap_password, role="owner")
     login = requests.post(
         f"{client.base_url}/v1/auth/login",
         json={"email": email, "password": bootstrap_password},
@@ -130,6 +125,21 @@ def api() -> ApiClient:
     client = ApiClient(base_url=API_BASE, token=API_BEARER_TOKEN)
     client.token = _resolve_working_token(client)
     return client
+
+
+@pytest.fixture(scope="session")
+def jwt_api() -> ApiClient:
+    bootstrap_password = "PytestViewerPassw0rd!123"
+    _, email = _create_user_with_password(uuid.uuid4().hex[:12], bootstrap_password, role="viewer")
+    login = requests.post(
+        f"{API_BASE}/v1/auth/login",
+        json={"email": email, "password": bootstrap_password},
+        timeout=30,
+    )
+    if login.status_code != 200:
+        raise AssertionError(f"unable to bootstrap viewer JWT test user: {login.status_code} {login.text}")
+    token = login.json()["access_token"]
+    return ApiClient(base_url=API_BASE, token=token)
 
 
 @pytest.fixture()
