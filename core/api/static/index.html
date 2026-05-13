@@ -152,6 +152,9 @@
           <button id="api-key-rotate-btn" type="button">Rotate Selected</button>
           <button id="api-key-revoke-btn" type="button">Revoke Selected</button>
         </div>
+        <div class="row">
+          <input id="api-key-danger-confirm" type="text" placeholder="Confirm phrase for rotate/revoke" />
+        </div>
 
         <label for="api-key-name">New Key Name</label>
         <input id="api-key-name" type="text" placeholder="automation-main" />
@@ -173,13 +176,16 @@
         <input id="api-key-expires-at" type="text" placeholder="2026-12-31T23:59:59Z" />
 
         <div class="row">
+          <button id="api-key-preview-btn" type="button">Preview Scope</button>
           <button id="api-key-create-btn" type="button">Create API Key</button>
         </div>
+        <pre id="api-key-preview-output"></pre>
 
         <label for="api-key-plaintext">Plaintext Key (shown once)</label>
         <div class="row">
           <input id="api-key-plaintext" type="text" readonly placeholder="Appears after create/rotate" />
           <button id="api-key-copy-btn" type="button">Copy Key</button>
+          <button id="api-key-copy-curl-btn" type="button">Copy Curl Example</button>
         </div>
 
         <pre id="api-keys-output"></pre>

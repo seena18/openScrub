@@ -295,9 +295,18 @@ function findSelectedCredential() {
 
 function summarizeApiKey(item) {
   const role = item.role || "unknown";
-  const state = item.enabled ? "enabled" : "revoked";
+  const roleLower = String(role).toLowerCase();
+  const isPrivileged = ["owner", "admin", "system"].includes(roleLower);
+  const expiresAt = item.expires_at || "";
+  const isExpired = Boolean(expiresAt && Date.parse(expiresAt) <= Date.now());
+  const state = item.enabled ? (isExpired ? "expired" : "enabled") : "revoked";
   const expires = item.expires_at ? `exp:${item.expires_at}` : "no-expiry";
-  return `${item.name} • ${role} • ${state} • ${expires}`;
+  const badges = [];
+  if (isPrivileged) badges.push("PRIV");
+  if (!item.enabled) badges.push("REVOKED");
+  if (isExpired) badges.push("EXPIRED");
+  const badgeText = badges.length ? ` [${badges.join("|")}]` : "";
+  return `${item.name} • ${role} • ${state} • ${expires}${badgeText}`;
 }
 
 function summarizeUser(item) {
@@ -366,6 +375,77 @@ function parseApiKeyPrefixes(raw) {
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
+}
+
+function buildApiKeyScopePreview({ role, prefixes, expiresAt, name, selected }) {
+  const normalizedRole = String(role || "system").trim().toLowerCase();
+  const normalizedPrefixes = (prefixes || []).map((x) => String(x).trim()).filter(Boolean);
+  const warnings = [];
+  if (["owner", "admin", "system"].includes(normalizedRole)) {
+    warnings.push("Privileged role: treat as high-risk secret.");
+  }
+  if (normalizedPrefixes.length === 0) {
+    warnings.push("No path scopes set: key can hit all allowed endpoints for its role.");
+  }
+  if (normalizedPrefixes.some((p) => p === "/v1" || p === "/")) {
+    warnings.push("Very broad prefix detected.");
+  }
+  const exp = expiresAt ? Date.parse(expiresAt) : NaN;
+  if (expiresAt && Number.isNaN(exp)) {
+    warnings.push("Expires-at is not valid ISO-8601.");
+  }
+  if (expiresAt && !Number.isNaN(exp) && exp <= Date.now()) {
+    warnings.push("Expires-at is in the past.");
+  }
+  return {
+    name: name || selected?.name || null,
+    role: normalizedRole,
+    allowed_path_prefixes: normalizedPrefixes,
+    expires_at: expiresAt || selected?.expires_at || null,
+    selected_key_id: selected?.id || null,
+    selected_key_state: selected
+      ? {
+          enabled: Boolean(selected.enabled),
+          expires_at: selected.expires_at || null,
+        }
+      : null,
+    warnings,
+  };
+}
+
+function renderApiKeyScopePreview() {
+  const out = document.getElementById("api-key-preview-output");
+  if (!out) return;
+  const selected = findSelectedApiKey();
+  const name = document.getElementById("api-key-name").value.trim();
+  const role = document.getElementById("api-key-role").value.trim();
+  const prefixesRaw = document.getElementById("api-key-prefixes").value;
+  const expiresAt = document.getElementById("api-key-expires-at").value.trim();
+  const preview = buildApiKeyScopePreview({
+    role: role || selected?.role || "system",
+    prefixes: parseApiKeyPrefixes(prefixesRaw || (selected?.allowed_path_prefixes || []).join(",")),
+    expiresAt,
+    name,
+    selected,
+  });
+  out.textContent = pretty(preview);
+}
+
+function requiredDangerPhrase(action, selected) {
+  return `${action}:${selected?.name || "unknown"}`;
+}
+
+function requireDangerConfirm(action, selected, currentValue) {
+  const expected = requiredDangerPhrase(action, selected);
+  const actual = String(currentValue || "").trim();
+  if (actual !== expected) {
+    throw {
+      status: 400,
+      body: {
+        detail: `confirmation mismatch; expected '${expected}'`,
+      },
+    };
+  }
 }
 
 async function refreshApiKeys(apiKeysOut, { verbose = true } = {}) {
@@ -505,6 +585,7 @@ function bind() {
   const webauthnOut = document.getElementById("webauthn-output");
   const usersOut = document.getElementById("users-output");
   const auditOut = document.getElementById("audit-output");
+  const apiKeyPreviewOut = document.getElementById("api-key-preview-output");
   const apiKeysOut = document.getElementById("api-keys-output");
 
   const authStatus = document.getElementById("auth-status");
@@ -632,6 +713,8 @@ function bind() {
     apiKeyCache = [];
     renderApiKeyPicker([]);
     document.getElementById("api-key-plaintext").value = "";
+    document.getElementById("api-key-danger-confirm").value = "";
+    apiKeyPreviewOut.textContent = pretty({ status: "info", detail: "Preview unavailable while logged out." });
     usersOut.textContent = pretty({ status: "ok", detail: "Cleared local user admin state." });
     apiKeysOut.textContent = pretty({ status: "ok", detail: "Cleared local API key UI state." });
     setStatus(apiKeysStatus, "info", "API key panel reset after logout.");
@@ -1044,9 +1127,31 @@ function bind() {
       setStatus(apiKeysStatus, "info", "No API key selected.");
       return;
     }
-    apiKeysOut.textContent = pretty(selected);
+    apiKeysOut.textContent = pretty({
+      ...selected,
+      danger_confirm_rotate: requiredDangerPhrase("rotate", selected),
+      danger_confirm_revoke: requiredDangerPhrase("revoke", selected),
+    });
     setStatus(apiKeysStatus, "success", "Showing selected API key details.");
   });
+
+  document.getElementById("api-key-preview-btn").addEventListener("click", () => {
+    renderApiKeyScopePreview();
+    setStatus(apiKeysStatus, "success", "API key scope preview updated.");
+  });
+
+  document.getElementById("api-key-select").addEventListener("change", () => {
+    const selected = findSelectedApiKey();
+    if (!selected) return;
+    document.getElementById("api-key-role").value = selected.role || "system";
+    document.getElementById("api-key-prefixes").value = (selected.allowed_path_prefixes || []).join(",");
+    document.getElementById("api-key-expires-at").value = selected.expires_at || "";
+    renderApiKeyScopePreview();
+  });
+
+  for (const id of ["api-key-name", "api-key-role", "api-key-prefixes", "api-key-expires-at"]) {
+    document.getElementById(id).addEventListener("input", () => renderApiKeyScopePreview());
+  }
 
   document.getElementById("api-key-create-btn").addEventListener("click", async (e) => {
     const button = e.currentTarget;
@@ -1074,7 +1179,9 @@ function bind() {
         });
         const plainEl = document.getElementById("api-key-plaintext");
         plainEl.value = data.api_key || "";
+        document.getElementById("api-key-danger-confirm").value = "";
         await refreshApiKeys(apiKeysOut, { verbose: false });
+        renderApiKeyScopePreview();
         return data;
       },
     }).catch(() => {});
@@ -1086,6 +1193,13 @@ function bind() {
     if (!selected) {
       apiKeysOut.textContent = pretty({ error: "Select an API key first." });
       setStatus(apiKeysStatus, "error", "Select an API key to rotate.");
+      return;
+    }
+    try {
+      requireDangerConfirm("rotate", selected, document.getElementById("api-key-danger-confirm").value);
+    } catch (err) {
+      apiKeysOut.textContent = pretty(err);
+      setStatus(apiKeysStatus, "error", errMessage(err));
       return;
     }
 
@@ -1101,7 +1215,9 @@ function bind() {
         });
         const plainEl = document.getElementById("api-key-plaintext");
         plainEl.value = data.api_key || "";
+        document.getElementById("api-key-danger-confirm").value = "";
         await refreshApiKeys(apiKeysOut, { verbose: false });
+        renderApiKeyScopePreview();
         return data;
       },
     }).catch(() => {});
@@ -1115,6 +1231,13 @@ function bind() {
       setStatus(apiKeysStatus, "error", "Select an API key to revoke.");
       return;
     }
+    try {
+      requireDangerConfirm("revoke", selected, document.getElementById("api-key-danger-confirm").value);
+    } catch (err) {
+      apiKeysOut.textContent = pretty(err);
+      setStatus(apiKeysStatus, "error", errMessage(err));
+      return;
+    }
 
     await runTask({
       button,
@@ -1126,7 +1249,9 @@ function bind() {
         const data = await api(`/v1/api-keys/${encodeURIComponent(selected.id)}/revoke`, {
           method: "POST",
         });
+        document.getElementById("api-key-danger-confirm").value = "";
         await refreshApiKeys(apiKeysOut, { verbose: false });
+        renderApiKeyScopePreview();
         return data;
       },
     }).catch(() => {});
@@ -1150,6 +1275,37 @@ function bind() {
     } catch (err) {
       setStatus(apiKeysStatus, "error", errMessage(err, "Unable to copy API key."));
       apiKeysOut.textContent = pretty({ error: errMessage(err) });
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  document.getElementById("api-key-copy-curl-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedApiKey();
+    const keyValue = document.getElementById("api-key-plaintext").value.trim();
+    if (!keyValue) {
+      apiKeysOut.textContent = pretty({
+        error: "No plaintext key available.",
+        hint: "Create or rotate a key first, then copy curl.",
+      });
+      setStatus(apiKeysStatus, "error", "No plaintext key available to build curl example.");
+      return;
+    }
+    const path = selected?.allowed_path_prefixes?.[0] || "/v1/version";
+    const curlCmd = `curl -H "Authorization: Bearer ${keyValue}" "${apiBase}${path}"`;
+    setBusy(button, true, "Copying…");
+    try {
+      const ok = await copyText(curlCmd);
+      if (!ok) throw new Error("Clipboard copy failed");
+      apiKeysOut.textContent = pretty({
+        copied: true,
+        curl_example: curlCmd,
+      });
+      setStatus(apiKeysStatus, "success", "Curl example copied.");
+    } catch (err) {
+      apiKeysOut.textContent = pretty({ error: errMessage(err) });
+      setStatus(apiKeysStatus, "error", errMessage(err, "Unable to copy curl example."));
     } finally {
       setBusy(button, false);
     }
@@ -1186,6 +1342,8 @@ function bind() {
         });
       });
   }
+
+  renderApiKeyScopePreview();
 }
 
 bind();
