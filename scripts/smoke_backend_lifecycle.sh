@@ -59,6 +59,15 @@ trap cleanup_on_exit EXIT
 echo "Ensuring services are up..."
 docker compose up -d postgres migrate api worker >/dev/null
 
+echo "Waiting for API health..."
+for i in $(seq 1 60); do
+  if curl -fsS "$API_BASE/health" >/dev/null; then
+    break
+  fi
+  sleep 2
+done
+curl -fsS "$API_BASE/health" >/dev/null
+
 cleanup_test_fixtures
 
 echo "Creating owner user fixture..."

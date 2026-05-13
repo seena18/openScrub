@@ -104,7 +104,14 @@ def _create_owner_user_with_password(run_key: str, password: str) -> tuple[str, 
 def _resolve_working_token(client: ApiClient) -> str:
     probe = client.request("GET", "/v1/auth/me")
     if probe.status_code == 200:
-        return client.token
+        try:
+            payload = probe.json()
+        except Exception:
+            payload = {}
+        # WebAuthn and MFA endpoints require a real user principal; static
+        # automation bearer tokens intentionally have user_id=None.
+        if payload.get("user_id"):
+            return client.token
 
     bootstrap_password = "PytestBootstrapPassw0rd!123"
     _, email = _create_owner_user_with_password(uuid.uuid4().hex[:12], bootstrap_password)
