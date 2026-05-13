@@ -17,6 +17,8 @@ Runnable self-host baseline with:
 
 ## Quickstart
 
+Canonical guide: [docs/quickstart.md](docs/quickstart.md)
+
 ```bash
 cd privacy-scrubber/deploy
 cp .env.example .env
@@ -200,6 +202,11 @@ Safe rollout:
 1. Set `MFA_POLICY_MODE=report` first.
 2. Enable MFA flags for all privileged accounts.
 3. Switch to `MFA_POLICY_MODE=enforce`.
+
+TOTP key handling:
+- Keep `MFA_TOTP_ENCRYPTION_KEY` stable across normal restarts/redeploys.
+- If you rotate it, plan a controlled TOTP re-enrollment event.
+- Helper script: `scripts/mfa_totp_key_rotation_reenroll.sh` (`dry-run` or `apply`)
 
 ## JWT Quick Example
 
@@ -390,6 +397,8 @@ scripts/pre-commit-adapter-gate.sh
 - Adapter Interface: [docs/adapter-interface.md](docs/adapter-interface.md)
 - Standards Baseline: [docs/STANDARDS.md](docs/STANDARDS.md)
 - Release Policy: [docs/release-policy.md](docs/release-policy.md)
+- Quickstart Guide: [docs/quickstart.md](docs/quickstart.md)
+- Production Hardening: [docs/production-hardening.md](docs/production-hardening.md)
 
 ## Audit Logging
 
