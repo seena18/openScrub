@@ -381,6 +381,8 @@ scripts/pre-commit-adapter-gate.sh
 ## Contracts
 
 - Contributor Guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security Policy: [SECURITY.md](SECURITY.md)
+- License: [LICENSE](LICENSE)
 - Issue Templates: [.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE)
 - PR Template: [.github/pull_request_template.md](.github/pull_request_template.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)

@@ -126,6 +126,7 @@ Breaking API changes require:
 - Avoid logging sensitive values.
 
 If you discover a security issue, do not publish exploit details in issues/PRs. Share a minimal private report with maintainers first.
+See `SECURITY.md` for the reporting path and response expectations.
 
 ## 9. Standards And Source Of Truth
 
