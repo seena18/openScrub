@@ -108,6 +108,34 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
     });
   });
 
+  await page.route("**/v1/findings?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: "finding_1",
+            profile_id: "profile_1",
+            scan_id: null,
+            adapter_id: null,
+            source_domain: "example-broker.test",
+            source_url: "https://example-broker.test/p/1",
+            matched_identifiers: ["email"],
+            exposed_fields: ["email"],
+            risk_score: 70,
+            status: "new",
+            first_seen_at: "2026-05-13T00:00:00Z",
+            last_seen_at: "2026-05-13T00:00:00Z",
+            removed_at: null,
+            notes: "seed finding",
+          },
+        ],
+        next_cursor: null,
+      }),
+    });
+  });
+
   await page.goto("/ui");
 
   await expect(page.getByRole("button", { name: "Login With Passkey" })).toBeVisible();
@@ -118,6 +146,7 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
   await expect(page.getByRole("button", { name: "Delete Selected Passkey" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Load Audit Log" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Load Profiles" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Load Findings" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export Filtered JSON" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy Curl Example" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear Sensitive UI Data" })).toBeVisible();
@@ -146,6 +175,9 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
   await page.selectOption("#profiles-select", "profile_1");
   await page.getByRole("button", { name: "Load Selected Profile Identifiers" }).click();
   await expect(page.locator("#profiles-output")).toContainText("identifier_1");
+
+  await page.getByRole("button", { name: "Load Findings" }).click();
+  await expect(page.locator("#findings-output")).toContainText("finding_1");
 
   await page.getByRole("button", { name: "Clear Sensitive UI Data" }).click();
   await expect(page.locator("#api-keys-output")).toContainText("cleared");

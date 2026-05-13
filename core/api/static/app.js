@@ -9,6 +9,8 @@ let auditItemsCache = [];
 let auditNextCursor = null;
 let profileCache = [];
 let selectedProfileIdentifiersCache = [];
+let findingCache = [];
+let findingsNextCursor = null;
 
 function accessToken() {
   return localStorage.getItem(accessStorageKey) || "";
@@ -76,10 +78,12 @@ function renderSessionState({
   authStatus,
   sessionStatus,
   profilesStatus,
+  findingsStatus,
   usersStatus,
   apiKeysStatus,
   auditStatus,
   profilesOut,
+  findingsOut,
   usersOut,
   apiKeysOut,
   auditOut,
@@ -92,6 +96,9 @@ function renderSessionState({
     profileCache = [];
     selectedProfileIdentifiersCache = [];
     renderProfilePicker([]);
+    findingCache = [];
+    findingsNextCursor = null;
+    renderFindingPicker([]);
     usersCache = [];
     renderUserPicker([]);
     apiKeyCache = [];
@@ -99,6 +106,7 @@ function renderSessionState({
     auditItemsCache = [];
     auditNextCursor = null;
     if (profilesOut) profilesOut.textContent = pretty({ status: "info", detail: "Login required." });
+    if (findingsOut) findingsOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (usersOut) usersOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (apiKeysOut) apiKeysOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (auditOut) auditOut.textContent = pretty({ status: "info", detail: "Login required." });
@@ -109,6 +117,9 @@ function renderSessionState({
   const role = String(user.role || "").toLowerCase();
   if (profilesStatus && !["owner", "admin", "operator", "system"].includes(role)) {
     setStatus(profilesStatus, "info", "Profile creation requires owner/admin/operator/system role.");
+  }
+  if (findingsStatus && !["owner", "admin", "reviewer", "operator", "viewer", "system"].includes(role)) {
+    setStatus(findingsStatus, "info", "Findings panel requires authenticated role access.");
   }
   if (!hasPrivilegedRole(user)) {
     setStatus(usersStatus, "info", "Users panel requires owner/admin/system role.");
@@ -360,6 +371,41 @@ function findSelectedProfile() {
   return profileCache.find((x) => x.id === selectedId) || null;
 }
 
+function summarizeFinding(item) {
+  const score = Number(item.risk_score || 0);
+  const status = item.status || "unknown";
+  const domain = item.source_domain || "unknown-domain";
+  return `${status} • risk:${score} • ${domain}`;
+}
+
+function renderFindingPicker(items) {
+  const select = document.getElementById("findings-select");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select finding…";
+  select.appendChild(placeholder);
+
+  for (const item of items || []) {
+    const opt = document.createElement("option");
+    opt.value = item.id;
+    opt.textContent = summarizeFinding(item);
+    select.appendChild(opt);
+  }
+
+  if (current && items.some((x) => x.id === current)) {
+    select.value = current;
+  }
+}
+
+function findSelectedFinding() {
+  const selectedId = document.getElementById("findings-select").value;
+  return findingCache.find((x) => x.id === selectedId) || null;
+}
+
 function renderUserPicker(items) {
   const select = document.getElementById("users-select");
   if (!select) return;
@@ -587,6 +633,36 @@ async function refreshSelectedProfileIdentifiers(profilesOut) {
   return data;
 }
 
+function getFindingsFilters() {
+  return {
+    profileId: document.getElementById("findings-filter-profile-id").value.trim(),
+    status: document.getElementById("findings-filter-status").value.trim(),
+    sourceDomain: document.getElementById("findings-filter-domain").value.trim(),
+  };
+}
+
+async function loadFindingsPage(findingsOut, { cursor = "", append = false } = {}) {
+  const filters = getFindingsFilters();
+  const params = new URLSearchParams();
+  params.set("limit", "100");
+  if (cursor) params.set("cursor", cursor);
+  if (filters.profileId) params.set("profile_id", filters.profileId);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.sourceDomain) params.set("source_domain", filters.sourceDomain);
+  const data = await api(`/v1/findings?${params.toString()}`);
+  const items = data.items || [];
+  findingCache = append ? [...findingCache, ...items] : items;
+  findingsNextCursor = data.next_cursor || null;
+  renderFindingPicker(findingCache);
+  findingsOut.textContent = pretty({
+    filters,
+    count: findingCache.length,
+    next_cursor: findingsNextCursor,
+    items: findingCache,
+  });
+  return data;
+}
+
 function getAuditFilters() {
   const fromValue = document.getElementById("audit-filter-from").value.trim();
   const toValue = document.getElementById("audit-filter-to").value.trim();
@@ -724,6 +800,7 @@ function bind() {
   const mfaOut = document.getElementById("mfa-output");
   const webauthnOut = document.getElementById("webauthn-output");
   const profilesOut = document.getElementById("profiles-output");
+  const findingsOut = document.getElementById("findings-output");
   const usersOut = document.getElementById("users-output");
   const auditOut = document.getElementById("audit-output");
   const apiKeyPreviewOut = document.getElementById("api-key-preview-output");
@@ -734,6 +811,7 @@ function bind() {
   const mfaStatus = document.getElementById("mfa-status");
   const webauthnStatus = document.getElementById("webauthn-status");
   const profilesStatus = document.getElementById("profiles-status");
+  const findingsStatus = document.getElementById("findings-status");
   const usersStatus = document.getElementById("users-status");
   const auditStatus = document.getElementById("audit-status");
   const apiKeysStatus = document.getElementById("api-keys-status");
@@ -743,6 +821,7 @@ function bind() {
   clearStatus(mfaStatus);
   clearStatus(webauthnStatus);
   clearStatus(profilesStatus);
+  clearStatus(findingsStatus);
   clearStatus(usersStatus);
   clearStatus(auditStatus);
   clearStatus(apiKeysStatus);
@@ -751,10 +830,12 @@ function bind() {
     authStatus,
     sessionStatus,
     profilesStatus,
+    findingsStatus,
     usersStatus,
     apiKeysStatus,
     auditStatus,
     profilesOut,
+    findingsOut,
     usersOut,
     apiKeysOut,
     auditOut,
@@ -782,10 +863,12 @@ function bind() {
           authStatus,
           sessionStatus,
           profilesStatus,
+          findingsStatus,
           usersStatus,
           apiKeysStatus,
           auditStatus,
           profilesOut,
+          findingsOut,
           usersOut,
           apiKeysOut,
           auditOut,
@@ -832,10 +915,12 @@ function bind() {
           authStatus,
           sessionStatus,
           profilesStatus,
+          findingsStatus,
           usersStatus,
           apiKeysStatus,
           auditStatus,
           profilesOut,
+          findingsOut,
           usersOut,
           apiKeysOut,
           auditOut,
@@ -876,10 +961,12 @@ function bind() {
       authStatus,
       sessionStatus,
       profilesStatus,
+      findingsStatus,
       usersStatus,
       apiKeysStatus,
       auditStatus,
       profilesOut,
+      findingsOut,
       usersOut,
       apiKeysOut,
       auditOut,
@@ -901,10 +988,12 @@ function bind() {
           authStatus,
           sessionStatus,
           profilesStatus,
+          findingsStatus,
           usersStatus,
           apiKeysStatus,
           auditStatus,
           profilesOut,
+          findingsOut,
           usersOut,
           apiKeysOut,
           auditOut,
@@ -1131,6 +1220,7 @@ function bind() {
       selectedProfileIdentifiersCache = [];
       return;
     }
+    document.getElementById("findings-filter-profile-id").value = selected.id;
     profilesOut.textContent = pretty({
       selected_profile: selected,
       selected_profile_identifiers: selectedProfileIdentifiersCache,
@@ -1216,6 +1306,120 @@ function bind() {
         document.getElementById("identifier-is-primary").checked = false;
         await refreshSelectedProfileIdentifiers(profilesOut);
         return created;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("findings-load-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    await runTask({
+      button,
+      statusEl: findingsStatus,
+      loadingText: "Loading findings…",
+      successText: "Findings loaded.",
+      outputEl: findingsOut,
+      task: async () => loadFindingsPage(findingsOut, { cursor: "", append: false }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("findings-next-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    if (!findingsNextCursor) {
+      findingsOut.textContent = pretty({
+        status: "info",
+        detail: "No next findings page available. Load findings first or end reached.",
+      });
+      setStatus(findingsStatus, "info", "No next findings page.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: findingsStatus,
+      loadingText: "Loading next findings page…",
+      successText: "Next findings page loaded.",
+      outputEl: findingsOut,
+      task: async () => loadFindingsPage(findingsOut, { cursor: findingsNextCursor, append: true }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("findings-reset-btn").addEventListener("click", () => {
+    findingCache = [];
+    findingsNextCursor = null;
+    renderFindingPicker([]);
+    document.getElementById("findings-filter-status").value = "";
+    document.getElementById("findings-filter-domain").value = "";
+    findingsOut.textContent = pretty({ status: "ok", detail: "Findings view reset." });
+    setStatus(findingsStatus, "info", "Findings view reset.");
+  });
+
+  document.getElementById("findings-select").addEventListener("change", () => {
+    const selected = findSelectedFinding();
+    if (!selected) return;
+    document.getElementById("findings-update-status").value = selected.status || "";
+    document.getElementById("findings-update-risk").value = selected.risk_score ?? "";
+    document.getElementById("findings-update-notes").value = selected.notes || "";
+  });
+
+  document.getElementById("findings-show-btn").addEventListener("click", () => {
+    const selected = findSelectedFinding();
+    if (!selected) {
+      findingsOut.textContent = pretty({ status: "info", detail: "No finding selected." });
+      setStatus(findingsStatus, "info", "Select a finding.");
+      return;
+    }
+    findingsOut.textContent = pretty(selected);
+    setStatus(findingsStatus, "success", "Showing selected finding.");
+  });
+
+  document.getElementById("findings-update-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedFinding();
+    if (!selected) {
+      findingsOut.textContent = pretty({ error: "Select a finding first." });
+      setStatus(findingsStatus, "error", "Select a finding to update.");
+      return;
+    }
+    const statusValue = document.getElementById("findings-update-status").value.trim();
+    const riskRaw = document.getElementById("findings-update-risk").value.trim();
+    const notesValue = document.getElementById("findings-update-notes").value.trim();
+    const payload = {};
+    if (statusValue) payload.status = statusValue;
+    if (riskRaw !== "") payload.risk_score = Number(riskRaw);
+    if (notesValue !== "") payload.notes = notesValue;
+    if (Object.keys(payload).length === 0) {
+      findingsOut.textContent = pretty({ status: "info", detail: "No update fields set." });
+      setStatus(findingsStatus, "info", "Set at least one field to update.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: findingsStatus,
+      loadingText: "Updating finding…",
+      successText: "Finding updated.",
+      outputEl: findingsOut,
+      task: async () => {
+        const updated = await api(`/v1/findings/${encodeURIComponent(selected.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        const idx = findingCache.findIndex((x) => x.id === selected.id);
+        if (idx >= 0) {
+          findingCache[idx] = {
+            ...findingCache[idx],
+            status: updated.status,
+            risk_score: updated.risk_score,
+            notes: updated.notes,
+            last_seen_at: updated.last_seen_at,
+            removed_at: updated.removed_at,
+          };
+        }
+        renderFindingPicker(findingCache);
+        findingsOut.textContent = pretty({
+          updated,
+          current_items: findingCache,
+          next_cursor: findingsNextCursor,
+        });
+        return updated;
       },
     }).catch(() => {});
   });
@@ -1629,10 +1833,16 @@ function bind() {
     document.getElementById("profile-owner-user-id").value = "";
     document.getElementById("identifier-value").value = "";
     document.getElementById("identifier-is-primary").checked = false;
+    document.getElementById("findings-filter-domain").value = "";
+    document.getElementById("findings-update-risk").value = "";
+    document.getElementById("findings-update-notes").value = "";
+    document.getElementById("findings-update-status").value = "";
 
     auditItemsCache = [];
     auditNextCursor = null;
     selectedProfileIdentifiersCache = [];
+    findingCache = [];
+    findingsNextCursor = null;
     document.getElementById("audit-filter-action").value = "";
     document.getElementById("audit-filter-actor").value = "";
     document.getElementById("audit-filter-object").value = "";
@@ -1642,6 +1852,7 @@ function bind() {
     mfaOut.textContent = pretty({ status: "ok", detail: "MFA form inputs cleared." });
     webauthnOut.textContent = pretty({ status: "ok", detail: "WebAuthn sensitive inputs cleared." });
     profilesOut.textContent = pretty({ status: "ok", detail: "Profile/identifier form inputs and selected identifier cache cleared." });
+    findingsOut.textContent = pretty({ status: "ok", detail: "Findings cache and update inputs cleared." });
     auditOut.textContent = pretty({ status: "ok", detail: "Audit cache + filters cleared from UI state." });
     apiKeysOut.textContent = pretty({ status: "ok", detail: "API key plaintext and danger confirm cleared." });
     apiKeyPreviewOut.textContent = pretty({ status: "ok", detail: "Preview remains available; sensitive fields cleared." });
@@ -1658,10 +1869,12 @@ function bind() {
           authStatus,
           sessionStatus,
           profilesStatus,
+          findingsStatus,
           usersStatus,
           apiKeysStatus,
           auditStatus,
           profilesOut,
+          findingsOut,
           usersOut,
           apiKeysOut,
           auditOut,
@@ -1674,10 +1887,12 @@ function bind() {
           authStatus,
           sessionStatus,
           profilesStatus,
+          findingsStatus,
           usersStatus,
           apiKeysStatus,
           auditStatus,
           profilesOut,
+          findingsOut,
           usersOut,
           apiKeysOut,
           auditOut,

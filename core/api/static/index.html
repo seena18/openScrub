@@ -136,6 +136,57 @@
       </section>
 
       <section class="card">
+        <h2>Findings Queue</h2>
+        <div id="findings-status" class="status hidden"></div>
+        <div class="row">
+          <button id="findings-load-btn" type="button">Load Findings</button>
+          <button id="findings-next-btn" type="button">Load Next Findings Page</button>
+          <button id="findings-reset-btn" type="button">Reset Findings View</button>
+        </div>
+        <div class="row">
+          <input id="findings-filter-profile-id" type="text" placeholder="Filter profile_id (optional UUID)" />
+          <select id="findings-filter-status">
+            <option value="">Any status</option>
+            <option value="new">new</option>
+            <option value="triaged">triaged</option>
+            <option value="task_created">task_created</option>
+            <option value="submitted">submitted</option>
+            <option value="pending_verification">pending_verification</option>
+            <option value="removed">removed</option>
+            <option value="reappeared">reappeared</option>
+            <option value="closed_false_positive">closed_false_positive</option>
+          </select>
+          <input id="findings-filter-domain" type="text" placeholder="Filter source_domain (optional)" />
+        </div>
+        <div class="row">
+          <select id="findings-select">
+            <option value="">Select finding…</option>
+          </select>
+          <button id="findings-show-btn" type="button">Show Selected Finding</button>
+        </div>
+        <div class="row">
+          <select id="findings-update-status">
+            <option value="">(no status change)</option>
+            <option value="new">new</option>
+            <option value="triaged">triaged</option>
+            <option value="task_created">task_created</option>
+            <option value="submitted">submitted</option>
+            <option value="pending_verification">pending_verification</option>
+            <option value="removed">removed</option>
+            <option value="reappeared">reappeared</option>
+            <option value="closed_false_positive">closed_false_positive</option>
+          </select>
+          <input id="findings-update-risk" type="number" placeholder="risk_score (optional)" />
+        </div>
+        <label for="findings-update-notes">Update Notes (optional)</label>
+        <input id="findings-update-notes" type="text" placeholder="triage notes..." />
+        <div class="row">
+          <button id="findings-update-btn" type="button">Update Selected Finding</button>
+        </div>
+        <pre id="findings-output"></pre>
+      </section>
+
+      <section class="card">
         <h2>Users (admin/owner)</h2>
         <div id="users-status" class="status hidden"></div>
         <div class="row">
