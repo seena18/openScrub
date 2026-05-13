@@ -377,6 +377,18 @@ function parseApiKeyPrefixes(raw) {
     .filter(Boolean);
 }
 
+function downloadTextFile(filename, content, mime = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function buildApiKeyScopePreview({ role, prefixes, expiresAt, name, selected }) {
   const normalizedRole = String(role || "system").trim().toLowerCase();
   const normalizedPrefixes = (prefixes || []).map((x) => String(x).trim()).filter(Boolean);
@@ -485,23 +497,60 @@ async function refreshUsers(usersOut, { verbose = true } = {}) {
 }
 
 function getAuditFilters() {
+  const fromValue = document.getElementById("audit-filter-from").value.trim();
+  const toValue = document.getElementById("audit-filter-to").value.trim();
   return {
     action: document.getElementById("audit-filter-action").value.trim().toLowerCase(),
     actor: document.getElementById("audit-filter-actor").value.trim().toLowerCase(),
     objectType: document.getElementById("audit-filter-object").value.trim().toLowerCase(),
+    from: fromValue,
+    to: toValue,
   };
 }
 
 function applyAuditFilters(items, filters) {
+  const fromTs = filters.from ? Date.parse(filters.from) : NaN;
+  const toTs = filters.to ? Date.parse(filters.to) : NaN;
   return (items || []).filter((item) => {
     const action = String(item.action || "").toLowerCase();
     const actor = String(item.actor_user_id || "").toLowerCase();
     const objectType = String(item.object_type || "").toLowerCase();
+    const createdTs = Date.parse(String(item.created_at || ""));
     if (filters.action && !action.includes(filters.action)) return false;
     if (filters.actor && !actor.includes(filters.actor)) return false;
     if (filters.objectType && !objectType.includes(filters.objectType)) return false;
+    if (!Number.isNaN(fromTs) && !Number.isNaN(createdTs) && createdTs < fromTs) return false;
+    if (!Number.isNaN(toTs) && !Number.isNaN(createdTs) && createdTs > toTs) return false;
     return true;
   });
+}
+
+function getFilteredAuditItems() {
+  return applyAuditFilters(auditItemsCache, getAuditFilters());
+}
+
+function csvEscape(value) {
+  const raw = value == null ? "" : String(value);
+  if (/[",\n]/.test(raw)) return `"${raw.replace(/"/g, "\"\"")}"`;
+  return raw;
+}
+
+function auditsToCsv(items) {
+  const headers = ["id", "created_at", "action", "actor_user_id", "object_type", "object_id", "payload_json"];
+  const rows = [headers.join(",")];
+  for (const item of items || []) {
+    const row = [
+      item.id,
+      item.created_at,
+      item.action,
+      item.actor_user_id || "",
+      item.object_type || "",
+      item.object_id || "",
+      JSON.stringify(item.payload || {}),
+    ].map(csvEscape);
+    rows.push(row.join(","));
+  }
+  return rows.join("\n");
 }
 
 function renderAuditOutput(auditOut, { items, nextCursor, filters }) {
@@ -595,6 +644,7 @@ function bind() {
   const usersStatus = document.getElementById("users-status");
   const auditStatus = document.getElementById("audit-status");
   const apiKeysStatus = document.getElementById("api-keys-status");
+  const safetyStatus = document.getElementById("safety-status");
 
   clearStatus(authStatus);
   clearStatus(mfaStatus);
@@ -602,6 +652,7 @@ function bind() {
   clearStatus(usersStatus);
   clearStatus(auditStatus);
   clearStatus(apiKeysStatus);
+  clearStatus(safetyStatus);
   renderSessionState({
     authStatus,
     sessionStatus,
@@ -1090,10 +1141,17 @@ function bind() {
   });
 
   document.getElementById("audit-apply-filter-btn").addEventListener("click", () => {
+    const filters = getAuditFilters();
+    const fromTs = filters.from ? Date.parse(filters.from) : NaN;
+    const toTs = filters.to ? Date.parse(filters.to) : NaN;
+    if (!Number.isNaN(fromTs) && !Number.isNaN(toTs) && fromTs > toTs) {
+      setStatus(auditStatus, "error", "Invalid range: 'from' is later than 'to'.");
+      return;
+    }
     renderAuditOutput(auditOut, {
       items: auditItemsCache,
       nextCursor: auditNextCursor,
-      filters: getAuditFilters(),
+      filters,
     });
     setStatus(auditStatus, "success", "Audit filters applied.");
   });
@@ -1102,10 +1160,30 @@ function bind() {
     document.getElementById("audit-filter-action").value = "";
     document.getElementById("audit-filter-actor").value = "";
     document.getElementById("audit-filter-object").value = "";
+    document.getElementById("audit-filter-from").value = "";
+    document.getElementById("audit-filter-to").value = "";
     auditItemsCache = [];
     auditNextCursor = null;
     auditOut.textContent = pretty({ status: "ok", detail: "Audit view reset." });
     setStatus(auditStatus, "info", "Audit view reset.");
+  });
+
+  document.getElementById("audit-export-json-btn").addEventListener("click", () => {
+    const filtered = getFilteredAuditItems();
+    const payload = {
+      exported_at: new Date().toISOString(),
+      filters: getAuditFilters(),
+      count: filtered.length,
+      items: filtered,
+    };
+    downloadTextFile(`audit-export-${Date.now()}.json`, `${pretty(payload)}\n`, "application/json;charset=utf-8");
+    setStatus(auditStatus, "success", `Exported ${filtered.length} audit rows as JSON.`);
+  });
+
+  document.getElementById("audit-export-csv-btn").addEventListener("click", () => {
+    const filtered = getFilteredAuditItems();
+    downloadTextFile(`audit-export-${Date.now()}.csv`, `${auditsToCsv(filtered)}\n`, "text/csv;charset=utf-8");
+    setStatus(auditStatus, "success", `Exported ${filtered.length} audit rows as CSV.`);
   });
 
   document.getElementById("api-keys-load-btn").addEventListener("click", async (e) => {
@@ -1309,6 +1387,31 @@ function bind() {
     } finally {
       setBusy(button, false);
     }
+  });
+
+  document.getElementById("clear-sensitive-btn").addEventListener("click", () => {
+    document.getElementById("api-key-plaintext").value = "";
+    document.getElementById("api-key-danger-confirm").value = "";
+    document.getElementById("totp_verify_code").value = "";
+    document.getElementById("totp_disable_password").value = "";
+    document.getElementById("totp_disable_code").value = "";
+    document.getElementById("webauthn_delete_password").value = "";
+    document.getElementById("users-delete-confirm").value = "";
+
+    auditItemsCache = [];
+    auditNextCursor = null;
+    document.getElementById("audit-filter-action").value = "";
+    document.getElementById("audit-filter-actor").value = "";
+    document.getElementById("audit-filter-object").value = "";
+    document.getElementById("audit-filter-from").value = "";
+    document.getElementById("audit-filter-to").value = "";
+
+    mfaOut.textContent = pretty({ status: "ok", detail: "MFA form inputs cleared." });
+    webauthnOut.textContent = pretty({ status: "ok", detail: "WebAuthn sensitive inputs cleared." });
+    auditOut.textContent = pretty({ status: "ok", detail: "Audit cache + filters cleared from UI state." });
+    apiKeysOut.textContent = pretty({ status: "ok", detail: "API key plaintext and danger confirm cleared." });
+    apiKeyPreviewOut.textContent = pretty({ status: "ok", detail: "Preview remains available; sensitive fields cleared." });
+    setStatus(safetyStatus, "success", "Sensitive UI fields and local caches cleared.");
   });
 
   if (token()) {

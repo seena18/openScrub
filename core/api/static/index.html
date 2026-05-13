@@ -126,11 +126,17 @@
           <button id="audit-reset-btn" type="button">Reset View</button>
         </div>
         <div class="row">
+          <button id="audit-export-json-btn" type="button">Export Filtered JSON</button>
+          <button id="audit-export-csv-btn" type="button">Export Filtered CSV</button>
+        </div>
+        <div class="row">
           <input id="audit-filter-action" type="text" placeholder="Filter action (contains), e.g. users.update" />
           <input id="audit-filter-actor" type="text" placeholder="Filter actor_user_id (contains)" />
         </div>
         <div class="row">
           <input id="audit-filter-object" type="text" placeholder="Filter object_type (contains)" />
+          <input id="audit-filter-from" type="datetime-local" />
+          <input id="audit-filter-to" type="datetime-local" />
           <button id="audit-apply-filter-btn" type="button">Apply Filter</button>
         </div>
         <pre id="audit-output"></pre>
@@ -189,6 +195,18 @@
         </div>
 
         <pre id="api-keys-output"></pre>
+      </section>
+
+      <section class="card">
+        <h2>Operator Safety</h2>
+        <div id="safety-status" class="status hidden"></div>
+        <p class="muted">
+          Rotate/Revoke requires confirm phrase in API key panel:
+          <code>rotate:&lt;key-name&gt;</code> or <code>revoke:&lt;key-name&gt;</code>.
+        </p>
+        <div class="row">
+          <button id="clear-sensitive-btn" type="button">Clear Sensitive UI Data</button>
+        </div>
       </section>
     </main>
 

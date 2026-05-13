@@ -78,6 +78,9 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
   await expect(page.getByRole("button", { name: "Reveal Details" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete Selected Passkey" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Load Audit Log" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export Filtered JSON" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy Curl Example" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Clear Sensitive UI Data" })).toBeVisible();
 
   await page.fill("#email", "qa@example.com");
   await page.fill("#password", "StrongPassw0rd!123");
@@ -96,4 +99,7 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
 
   await page.getByRole("button", { name: "Load Audit Log" }).click();
   await expect(page.locator("#audit-output")).toContainText("users.update_role");
+
+  await page.getByRole("button", { name: "Clear Sensitive UI Data" }).click();
+  await expect(page.locator("#api-keys-output")).toContainText("cleared");
 });
