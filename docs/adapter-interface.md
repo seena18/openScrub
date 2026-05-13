@@ -1,6 +1,7 @@
 # Adapter Interface (v1)
 
 Adapters encapsulate site-specific logic for discovery hints and opt-out workflows.
+Use `adapters/examples/` as the reference baseline for new provider implementations.
 
 ## Goals
 
