@@ -28,8 +28,14 @@ Set these in `deploy/.env` before first startup:
 
 - `IDENTIFIER_ENCRYPTION_KEY=<generated-key>`
 - `JWT_SECRET=<long-random-secret>`
+- `MFA_TOTP_ENCRYPTION_KEY=<generated-key>` (recommended dedicated key)
 - `ALLOW_SELF_REGISTER=true` (bootstrap only)
 - `API_BEARER_TOKEN=` (leave empty unless explicitly needed)
+
+Important:
+- Treat `MFA_TOTP_ENCRYPTION_KEY` as persistent secret state.
+- Do not change it across normal restarts/redeploys.
+- Back up `deploy/.env` (or your secret-manager values) before upgrades.
 
 ## 2. Start Stack
 

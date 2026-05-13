@@ -48,6 +48,27 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
     });
   });
 
+  await page.route("**/v1/audit-log?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: "audit_1",
+            actor_user_id: "user_1",
+            action: "users.update_role",
+            object_type: "user",
+            object_id: "obj_1",
+            payload: { old_role: "viewer", new_role: "operator" },
+            created_at: "2026-05-13T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      }),
+    });
+  });
+
   await page.goto("/ui");
 
   await expect(page.getByRole("button", { name: "Login With Passkey" })).toBeVisible();
@@ -56,6 +77,7 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
   await expect(page.getByRole("button", { name: "Copy Selected ID" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Reveal Details" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete Selected Passkey" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Load Audit Log" })).toBeVisible();
 
   await page.fill("#email", "qa@example.com");
   await page.fill("#password", "StrongPassw0rd!123");
@@ -71,4 +93,7 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
   await page.selectOption("#webauthn_credential_select", "cred_test_2");
   await page.getByRole("button", { name: "Reveal Details" }).click();
   await expect(page.locator("#webauthn-output")).toContainText("Phone Passkey");
+
+  await page.getByRole("button", { name: "Load Audit Log" }).click();
+  await expect(page.locator("#audit-output")).toContainText("users.update_role");
 });

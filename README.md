@@ -203,6 +203,11 @@ Safe rollout:
 2. Enable MFA flags for all privileged accounts.
 3. Switch to `MFA_POLICY_MODE=enforce`.
 
+TOTP key handling:
+- Keep `MFA_TOTP_ENCRYPTION_KEY` stable across normal restarts/redeploys.
+- If you rotate it, plan a controlled TOTP re-enrollment event.
+- Helper script: `scripts/mfa_totp_key_rotation_reenroll.sh` (`dry-run` or `apply`)
+
 ## JWT Quick Example
 
 Register first user:

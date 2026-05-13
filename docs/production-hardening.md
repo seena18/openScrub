@@ -30,6 +30,12 @@ This checklist is for internet-accessible or shared-team deployments.
 - Rotate secrets on compromise or operator turnover.
 - Keep `ENABLE_INSECURE_RESET_TOKEN_RESPONSE=false` in production.
 
+### TOTP Key Stability Rule
+
+- Keep `MFA_TOTP_ENCRYPTION_KEY` stable across restarts/redeploys.
+- If unset, the app falls back to `IDENTIFIER_ENCRYPTION_KEY`; choose one policy and keep it stable.
+- Unplanned key changes will break decryption of stored TOTP secrets and block MFA login.
+
 ## Data Protection
 
 - Encrypt disks/volumes at rest (host-level).
@@ -73,6 +79,19 @@ This checklist is for internet-accessible or shared-team deployments.
 - Require at least one external reviewer for protected branches.
 - Keep CI gates green before merge.
 - Tag releases and maintain changelog entries.
+
+## Controlled TOTP Key Rotation
+
+If you must rotate `MFA_TOTP_ENCRYPTION_KEY`, do it as a planned re-enrollment event:
+
+1. Announce maintenance window and expected MFA re-enrollment.
+2. Set `MFA_POLICY_MODE=report` temporarily.
+3. Update `MFA_TOTP_ENCRYPTION_KEY` to the new value.
+4. Run:
+   - `scripts/mfa_totp_key_rotation_reenroll.sh dry-run`
+   - `scripts/mfa_totp_key_rotation_reenroll.sh apply`
+5. Have privileged users re-enroll TOTP.
+6. Restore `MFA_POLICY_MODE=enforce`.
 
 ## Operational Verification
 

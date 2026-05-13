@@ -1,15 +1,111 @@
 const apiBase = window.location.origin;
-const storageKey = "scrubber_access_token";
+const accessStorageKey = "scrubber_access_token";
+const refreshStorageKey = "scrubber_refresh_token";
+const sessionUserStorageKey = "scrubber_session_user";
 let webauthnCredentialCache = [];
 let apiKeyCache = [];
+let usersCache = [];
+let auditItemsCache = [];
+let auditNextCursor = null;
+
+function accessToken() {
+  return localStorage.getItem(accessStorageKey) || "";
+}
+
+function refreshToken() {
+  return localStorage.getItem(refreshStorageKey) || "";
+}
+
+function sessionUser() {
+  const raw = localStorage.getItem(sessionUserStorageKey);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
 
 function token() {
-  return localStorage.getItem(storageKey) || "";
+  return accessToken();
 }
 
 function setToken(value) {
-  if (value) localStorage.setItem(storageKey, value);
-  else localStorage.removeItem(storageKey);
+  if (value) localStorage.setItem(accessStorageKey, value);
+  else localStorage.removeItem(accessStorageKey);
+}
+
+function setRefreshToken(value) {
+  if (value) localStorage.setItem(refreshStorageKey, value);
+  else localStorage.removeItem(refreshStorageKey);
+}
+
+function setSessionUser(value) {
+  if (value) localStorage.setItem(sessionUserStorageKey, JSON.stringify(value));
+  else localStorage.removeItem(sessionUserStorageKey);
+}
+
+function clearSession() {
+  setToken("");
+  setRefreshToken("");
+  setSessionUser(null);
+}
+
+function applyAuthPayload(data) {
+  setToken(data?.access_token || "");
+  setRefreshToken(data?.refresh_token || "");
+  if (data?.user) setSessionUser(data.user);
+}
+
+function hasPrivilegedRole(user) {
+  const role = String(user?.role || "").toLowerCase();
+  return role === "owner" || role === "admin" || role === "system";
+}
+
+function summarizeSession(user) {
+  if (!user) return "No active session.";
+  const role = user.role || "unknown";
+  const email = user.email || "unknown";
+  const mfa = user.mfa_enabled === true ? "mfa:on" : user.mfa_enabled === false ? "mfa:off" : "mfa:unknown";
+  return `Signed in as ${email} (${role}, ${mfa})`;
+}
+
+function renderSessionState({
+  authStatus,
+  sessionStatus,
+  usersStatus,
+  apiKeysStatus,
+  auditStatus,
+  usersOut,
+  apiKeysOut,
+  auditOut,
+}) {
+  const user = sessionUser();
+  sessionStatus.className = "status info";
+  sessionStatus.textContent = summarizeSession(user);
+
+  if (!user) {
+    usersCache = [];
+    renderUserPicker([]);
+    apiKeyCache = [];
+    renderApiKeyPicker([]);
+    auditItemsCache = [];
+    auditNextCursor = null;
+    usersOut.textContent = pretty({ status: "info", detail: "Login required." });
+    apiKeysOut.textContent = pretty({ status: "info", detail: "Login required." });
+    auditOut.textContent = pretty({ status: "info", detail: "Login required." });
+    setStatus(authStatus, "info", "Login required.");
+    return;
+  }
+
+  if (!hasPrivilegedRole(user)) {
+    setStatus(usersStatus, "info", "Users panel requires owner/admin/system role.");
+    setStatus(apiKeysStatus, "info", "API key panel requires owner/admin/system role.");
+  }
+  const role = String(user.role || "").toLowerCase();
+  if (!["owner", "admin", "reviewer", "system"].includes(role)) {
+    setStatus(auditStatus, "info", "Audit panel requires owner/admin/reviewer/system role.");
+  }
 }
 
 function pretty(obj) {
@@ -60,7 +156,7 @@ async function runTask({ button, statusEl, loadingText, successText, task, outpu
   }
 }
 
-async function api(path, opts = {}) {
+async function requestApi(path, opts = {}) {
   const headers = opts.headers || {};
   if (token()) headers.Authorization = `Bearer ${token()}`;
   if (opts.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
@@ -70,8 +166,39 @@ async function api(path, opts = {}) {
   try {
     body = JSON.parse(text);
   } catch (_) {}
-  if (!res.ok) throw { status: res.status, body };
+  if (!res.ok) {
+    const err = { status: res.status, body };
+    throw err;
+  }
   return body;
+}
+
+async function refreshSessionToken() {
+  const rt = refreshToken();
+  if (!rt) throw { status: 401, body: { detail: "missing refresh token" } };
+  const data = await requestApi("/v1/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refresh_token: rt }),
+  });
+  applyAuthPayload(data);
+  return data;
+}
+
+async function api(path, opts = {}) {
+  try {
+    return await requestApi(path, opts);
+  } catch (err) {
+    const status = Number(err?.status || 0);
+    const canRetry = status === 401 && Boolean(refreshToken()) && path !== "/v1/auth/refresh";
+    if (!canRetry) throw err;
+    try {
+      await refreshSessionToken();
+      return await requestApi(path, opts);
+    } catch (refreshErr) {
+      clearSession();
+      throw refreshErr;
+    }
+  }
 }
 
 function base64urlToArrayBuffer(value) {
@@ -173,6 +300,40 @@ function summarizeApiKey(item) {
   return `${item.name} • ${role} • ${state} • ${expires}`;
 }
 
+function summarizeUser(item) {
+  const role = item.role || "unknown";
+  const mfa = item.mfa_enabled ? "mfa:on" : "mfa:off";
+  return `${item.email} • ${role} • ${mfa}`;
+}
+
+function renderUserPicker(items) {
+  const select = document.getElementById("users-select");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select user…";
+  select.appendChild(placeholder);
+
+  for (const item of items || []) {
+    const opt = document.createElement("option");
+    opt.value = item.id;
+    opt.textContent = summarizeUser(item);
+    select.appendChild(opt);
+  }
+
+  if (current && items.some((x) => x.id === current)) {
+    select.value = current;
+  }
+}
+
+function findSelectedUser() {
+  const selectedId = document.getElementById("users-select").value;
+  return usersCache.find((x) => x.id === selectedId) || null;
+}
+
 function renderApiKeyPicker(items) {
   const select = document.getElementById("api-key-select");
   const current = select.value;
@@ -234,6 +395,62 @@ async function autoLoadApiKeysAfterAuth(apiKeysOut, apiKeysStatus) {
   }
 }
 
+async function refreshUsers(usersOut, { verbose = true } = {}) {
+  const data = await api("/v1/users");
+  const items = data.items || [];
+  usersCache = items;
+  renderUserPicker(items);
+  if (verbose) usersOut.textContent = pretty(data);
+  return data;
+}
+
+function getAuditFilters() {
+  return {
+    action: document.getElementById("audit-filter-action").value.trim().toLowerCase(),
+    actor: document.getElementById("audit-filter-actor").value.trim().toLowerCase(),
+    objectType: document.getElementById("audit-filter-object").value.trim().toLowerCase(),
+  };
+}
+
+function applyAuditFilters(items, filters) {
+  return (items || []).filter((item) => {
+    const action = String(item.action || "").toLowerCase();
+    const actor = String(item.actor_user_id || "").toLowerCase();
+    const objectType = String(item.object_type || "").toLowerCase();
+    if (filters.action && !action.includes(filters.action)) return false;
+    if (filters.actor && !actor.includes(filters.actor)) return false;
+    if (filters.objectType && !objectType.includes(filters.objectType)) return false;
+    return true;
+  });
+}
+
+function renderAuditOutput(auditOut, { items, nextCursor, filters }) {
+  const filtered = applyAuditFilters(items, filters);
+  auditOut.textContent = pretty({
+    filters,
+    count: filtered.length,
+    total_loaded: (items || []).length,
+    next_cursor: nextCursor,
+    items: filtered,
+  });
+}
+
+async function loadAuditPage(auditOut, { cursor = "", append = false } = {}) {
+  const params = new URLSearchParams();
+  params.set("limit", "100");
+  if (cursor) params.set("cursor", cursor);
+  const data = await api(`/v1/audit-log?${params.toString()}`);
+  const pageItems = data.items || [];
+  auditItemsCache = append ? [...auditItemsCache, ...pageItems] : pageItems;
+  auditNextCursor = data.next_cursor || null;
+  renderAuditOutput(auditOut, {
+    items: auditItemsCache,
+    nextCursor: auditNextCursor,
+    filters: getAuditFilters(),
+  });
+  return data;
+}
+
 function renderCredentialPicker(items) {
   const select = document.getElementById("webauthn_credential_select");
   const current = select.value;
@@ -287,19 +504,33 @@ function bind() {
   const mfaOut = document.getElementById("mfa-output");
   const webauthnOut = document.getElementById("webauthn-output");
   const usersOut = document.getElementById("users-output");
+  const auditOut = document.getElementById("audit-output");
   const apiKeysOut = document.getElementById("api-keys-output");
 
   const authStatus = document.getElementById("auth-status");
+  const sessionStatus = document.getElementById("session-status");
   const mfaStatus = document.getElementById("mfa-status");
   const webauthnStatus = document.getElementById("webauthn-status");
   const usersStatus = document.getElementById("users-status");
+  const auditStatus = document.getElementById("audit-status");
   const apiKeysStatus = document.getElementById("api-keys-status");
 
   clearStatus(authStatus);
   clearStatus(mfaStatus);
   clearStatus(webauthnStatus);
   clearStatus(usersStatus);
+  clearStatus(auditStatus);
   clearStatus(apiKeysStatus);
+  renderSessionState({
+    authStatus,
+    sessionStatus,
+    usersStatus,
+    apiKeysStatus,
+    auditStatus,
+    usersOut,
+    apiKeysOut,
+    auditOut,
+  });
 
   document.getElementById("login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -318,7 +549,17 @@ function bind() {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        setToken(data.access_token || "");
+        applyAuthPayload(data);
+        renderSessionState({
+          authStatus,
+          sessionStatus,
+          usersStatus,
+          apiKeysStatus,
+          auditStatus,
+          usersOut,
+          apiKeysOut,
+          auditOut,
+        });
         await autoLoadApiKeysAfterAuth(apiKeysOut, apiKeysStatus);
         return data;
       },
@@ -355,22 +596,56 @@ function bind() {
             credential: authenticationCredentialToJSON(assertion),
           }),
         });
-        setToken(finish.access_token || "");
+        applyAuthPayload(finish);
+        renderSessionState({
+          authStatus,
+          sessionStatus,
+          usersStatus,
+          apiKeysStatus,
+          auditStatus,
+          usersOut,
+          apiKeysOut,
+          auditOut,
+        });
         await autoLoadApiKeysAfterAuth(apiKeysOut, apiKeysStatus);
         return finish;
       },
     }).catch(() => {});
   });
 
-  document.getElementById("logout-btn").addEventListener("click", () => {
-    setToken("");
+  document.getElementById("logout-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const rt = refreshToken();
+    if (rt) {
+      await runTask({
+        button,
+        statusEl: authStatus,
+        loadingText: "Logging out…",
+        successText: "Logged out.",
+        outputEl: authOut,
+        task: async () => api("/v1/auth/logout", { method: "POST", body: JSON.stringify({ refresh_token: rt }) }),
+      }).catch(() => {});
+    }
+    clearSession();
+    usersCache = [];
+    renderUserPicker([]);
     apiKeyCache = [];
     renderApiKeyPicker([]);
     document.getElementById("api-key-plaintext").value = "";
+    usersOut.textContent = pretty({ status: "ok", detail: "Cleared local user admin state." });
     apiKeysOut.textContent = pretty({ status: "ok", detail: "Cleared local API key UI state." });
     setStatus(apiKeysStatus, "info", "API key panel reset after logout.");
-    authOut.textContent = "Logged out locally (token cleared).";
-    setStatus(authStatus, "info", "Local token cleared.");
+    authOut.textContent = "Logged out (local session cleared).";
+    renderSessionState({
+      authStatus,
+      sessionStatus,
+      usersStatus,
+      apiKeysStatus,
+      auditStatus,
+      usersOut,
+      apiKeysOut,
+      auditOut,
+    });
   });
 
   document.getElementById("me-btn").addEventListener("click", async (e) => {
@@ -381,7 +656,21 @@ function bind() {
       loadingText: "Loading current session…",
       successText: "Session details refreshed.",
       outputEl: authOut,
-      task: async () => api("/v1/auth/me"),
+      task: async () => {
+        const data = await api("/v1/auth/me");
+        setSessionUser(data);
+        renderSessionState({
+          authStatus,
+          sessionStatus,
+          usersStatus,
+          apiKeysStatus,
+          auditStatus,
+          usersOut,
+          apiKeysOut,
+          auditOut,
+        });
+        return data;
+      },
     }).catch(() => {});
   });
 
@@ -578,8 +867,162 @@ function bind() {
       loadingText: "Loading users…",
       successText: "Users loaded.",
       outputEl: usersOut,
-      task: async () => api("/v1/users"),
+      task: async () => refreshUsers(usersOut),
     }).catch(() => {});
+  });
+
+  document.getElementById("users-show-btn").addEventListener("click", () => {
+    const selected = findSelectedUser();
+    if (!selected) {
+      usersOut.textContent = pretty({ status: "info", detail: "No user selected." });
+      setStatus(usersStatus, "info", "Select a user.");
+      return;
+    }
+    usersOut.textContent = pretty(selected);
+    setStatus(usersStatus, "success", "Showing selected user.");
+  });
+
+  document.getElementById("users-select").addEventListener("change", () => {
+    const selected = findSelectedUser();
+    if (!selected) return;
+    document.getElementById("users-role-select").value = selected.role || "viewer";
+    document.getElementById("users-mfa-select").value = selected.mfa_enabled ? "true" : "false";
+  });
+
+  document.getElementById("users-role-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedUser();
+    if (!selected) {
+      usersOut.textContent = pretty({ error: "Select a user first." });
+      setStatus(usersStatus, "error", "Select a user to change role.");
+      return;
+    }
+    const role = document.getElementById("users-role-select").value.trim();
+    await runTask({
+      button,
+      statusEl: usersStatus,
+      loadingText: "Updating user role…",
+      successText: "User role updated.",
+      outputEl: usersOut,
+      task: async () => {
+        const data = await api(`/v1/users/${encodeURIComponent(selected.id)}/role`, {
+          method: "PATCH",
+          body: JSON.stringify({ role }),
+        });
+        await refreshUsers(usersOut, { verbose: false });
+        return data;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("users-mfa-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedUser();
+    if (!selected) {
+      usersOut.textContent = pretty({ error: "Select a user first." });
+      setStatus(usersStatus, "error", "Select a user to set MFA state.");
+      return;
+    }
+    const mfaEnabled = document.getElementById("users-mfa-select").value === "true";
+    await runTask({
+      button,
+      statusEl: usersStatus,
+      loadingText: "Updating user MFA state…",
+      successText: "User MFA state updated.",
+      outputEl: usersOut,
+      task: async () => {
+        const data = await api(`/v1/users/${encodeURIComponent(selected.id)}/mfa`, {
+          method: "PATCH",
+          body: JSON.stringify({ mfa_enabled: mfaEnabled }),
+        });
+        await refreshUsers(usersOut, { verbose: false });
+        return data;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("users-delete-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedUser();
+    if (!selected) {
+      usersOut.textContent = pretty({ error: "Select a user first." });
+      setStatus(usersStatus, "error", "Select a user to delete.");
+      return;
+    }
+    const confirmValue = document.getElementById("users-delete-confirm").value.trim().toLowerCase();
+    if (!confirmValue || confirmValue !== String(selected.email || "").toLowerCase()) {
+      usersOut.textContent = pretty({
+        error: "Delete confirmation mismatch",
+        expected: selected.email,
+        hint: "Type the selected email exactly",
+      });
+      setStatus(usersStatus, "error", "Type selected email in confirmation field before delete.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: usersStatus,
+      loadingText: "Deleting user…",
+      successText: "User deleted.",
+      outputEl: usersOut,
+      task: async () => {
+        const data = await api(`/v1/users/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
+        document.getElementById("users-delete-confirm").value = "";
+        await refreshUsers(usersOut, { verbose: false });
+        return data;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("audit-load-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    await runTask({
+      button,
+      statusEl: auditStatus,
+      loadingText: "Loading audit log…",
+      successText: "Audit log loaded.",
+      outputEl: auditOut,
+      task: async () => loadAuditPage(auditOut, { cursor: "", append: false }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("audit-next-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    if (!auditNextCursor) {
+      auditOut.textContent = pretty({
+        status: "info",
+        detail: "No next page cursor. Load audit log first or you reached the end.",
+      });
+      setStatus(auditStatus, "info", "No next page available.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: auditStatus,
+      loadingText: "Loading next audit page…",
+      successText: "Next audit page loaded.",
+      outputEl: auditOut,
+      task: async () => loadAuditPage(auditOut, { cursor: auditNextCursor, append: true }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("audit-apply-filter-btn").addEventListener("click", () => {
+    renderAuditOutput(auditOut, {
+      items: auditItemsCache,
+      nextCursor: auditNextCursor,
+      filters: getAuditFilters(),
+    });
+    setStatus(auditStatus, "success", "Audit filters applied.");
+  });
+
+  document.getElementById("audit-reset-btn").addEventListener("click", () => {
+    document.getElementById("audit-filter-action").value = "";
+    document.getElementById("audit-filter-actor").value = "";
+    document.getElementById("audit-filter-object").value = "";
+    auditItemsCache = [];
+    auditNextCursor = null;
+    auditOut.textContent = pretty({ status: "ok", detail: "Audit view reset." });
+    setStatus(auditStatus, "info", "Audit view reset.");
   });
 
   document.getElementById("api-keys-load-btn").addEventListener("click", async (e) => {
@@ -711,6 +1154,38 @@ function bind() {
       setBusy(button, false);
     }
   });
+
+  if (token()) {
+    api("/v1/auth/me")
+      .then((me) => {
+        setSessionUser(me);
+        authOut.textContent = pretty(me);
+        setStatus(authStatus, "success", "Session restored from local token.");
+        renderSessionState({
+          authStatus,
+          sessionStatus,
+          usersStatus,
+          apiKeysStatus,
+          auditStatus,
+          usersOut,
+          apiKeysOut,
+          auditOut,
+        });
+      })
+      .catch(() => {
+        clearSession();
+        renderSessionState({
+          authStatus,
+          sessionStatus,
+          usersStatus,
+          apiKeysStatus,
+          auditStatus,
+          usersOut,
+          apiKeysOut,
+          auditOut,
+        });
+      });
+  }
 }
 
 bind();

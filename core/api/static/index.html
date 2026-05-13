@@ -16,6 +16,7 @@
       <section class="card">
         <h2>Auth</h2>
         <div id="auth-status" class="status hidden"></div>
+        <div id="session-status" class="status info">No active session.</div>
         <form id="login-form">
           <label>Email</label>
           <input id="email" type="email" required />
@@ -86,7 +87,53 @@
         <div class="row">
           <button id="users-btn" type="button">Load Users</button>
         </div>
+        <div class="row">
+          <select id="users-select">
+            <option value="">Select user…</option>
+          </select>
+          <button id="users-show-btn" type="button">Show Selected</button>
+        </div>
+        <div class="row">
+          <select id="users-role-select">
+            <option value="owner">owner</option>
+            <option value="admin">admin</option>
+            <option value="operator">operator</option>
+            <option value="reviewer">reviewer</option>
+            <option value="viewer">viewer</option>
+          </select>
+          <button id="users-role-btn" type="button">Update Role</button>
+        </div>
+        <div class="row">
+          <select id="users-mfa-select">
+            <option value="true">Enable MFA</option>
+            <option value="false">Disable MFA</option>
+          </select>
+          <button id="users-mfa-btn" type="button">Set MFA State</button>
+        </div>
+        <div class="row">
+          <input id="users-delete-confirm" type="text" placeholder="Type selected email to confirm delete" />
+          <button id="users-delete-btn" type="button">Delete Selected User</button>
+        </div>
         <pre id="users-output"></pre>
+      </section>
+
+      <section class="card">
+        <h2>Audit Log (owner/admin/reviewer)</h2>
+        <div id="audit-status" class="status hidden"></div>
+        <div class="row">
+          <button id="audit-load-btn" type="button">Load Audit Log</button>
+          <button id="audit-next-btn" type="button">Load Next Page</button>
+          <button id="audit-reset-btn" type="button">Reset View</button>
+        </div>
+        <div class="row">
+          <input id="audit-filter-action" type="text" placeholder="Filter action (contains), e.g. users.update" />
+          <input id="audit-filter-actor" type="text" placeholder="Filter actor_user_id (contains)" />
+        </div>
+        <div class="row">
+          <input id="audit-filter-object" type="text" placeholder="Filter object_type (contains)" />
+          <button id="audit-apply-filter-btn" type="button">Apply Filter</button>
+        </div>
+        <pre id="audit-output"></pre>
       </section>
 
       <section class="card">
