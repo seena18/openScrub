@@ -62,8 +62,8 @@ def _insert_webauthn_credential(user_id: str, credential_id: str) -> None:
         conn.commit()
 
 
-def test_webauthn_challenge_replay_and_expiry(api):
-    me = api.json("GET", "/v1/auth/me", expected_status=200)
+def test_webauthn_challenge_replay_and_expiry(jwt_api):
+    me = jwt_api.json("GET", "/v1/auth/me", expected_status=200)
     user_id = me.get("user_id")
     assert user_id, "expected JWT user principal for test fixture"
 
@@ -74,7 +74,7 @@ def test_webauthn_challenge_replay_and_expiry(api):
         challenge="replay-challenge-value",
         expired=False,
     )
-    first = api.request(
+    first = jwt_api.request(
         "POST",
         "/v1/auth/mfa/webauthn/verify-setup",
         json={"challenge_id": challenge_id, "credential": {}},
@@ -82,7 +82,7 @@ def test_webauthn_challenge_replay_and_expiry(api):
     assert first.status_code == 400, first.text
     assert "webauthn registration verify failed" in first.text.lower()
 
-    second = api.request(
+    second = jwt_api.request(
         "POST",
         "/v1/auth/mfa/webauthn/verify-setup",
         json={"challenge_id": challenge_id, "credential": {}},
@@ -97,7 +97,7 @@ def test_webauthn_challenge_replay_and_expiry(api):
         challenge="expired-challenge-value",
         expired=True,
     )
-    expired_resp = api.request(
+    expired_resp = jwt_api.request(
         "POST",
         "/v1/auth/mfa/webauthn/verify-setup",
         json={"challenge_id": expired_id, "credential": {}},
@@ -166,8 +166,8 @@ def test_webauthn_auth_finish_rate_limited(api, run_key: str):
     assert last_status == 429, f"expected 429 rate-limit response, got {last_status}"
 
 
-def test_webauthn_verify_setup_rate_limited(api):
-    me = api.json("GET", "/v1/auth/me", expected_status=200)
+def test_webauthn_verify_setup_rate_limited(jwt_api):
+    me = jwt_api.json("GET", "/v1/auth/me", expected_status=200)
     user_id = me.get("user_id")
     assert user_id, "expected JWT user principal for test fixture"
 
@@ -179,7 +179,7 @@ def test_webauthn_verify_setup_rate_limited(api):
             challenge=f"verify-rl-{i}",
             expired=False,
         )
-        resp = api.request(
+        resp = jwt_api.request(
             "POST",
             "/v1/auth/mfa/webauthn/verify-setup",
             json={"challenge_id": challenge_id, "credential": {}},
