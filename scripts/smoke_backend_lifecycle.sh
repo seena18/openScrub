@@ -35,6 +35,35 @@ ADAPTER_KEY="${TEST_PREFIX}_adapter_${RUN_KEY}"
 
 cd "$DEPLOY_DIR"
 
+api_request() {
+  local method="$1"
+  local path="$2"
+  local data="${3:-}"
+  local resp
+  if [[ -n "$data" ]]; then
+    resp="$(curl -sS -X "$method" "$API_BASE$path" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "$data" \
+      -w $'\n%{http_code}')"
+  else
+    resp="$(curl -sS -X "$method" "$API_BASE$path" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}')"
+  fi
+  local code
+  code="$(printf '%s\n' "$resp" | tail -n1)"
+  local body
+  body="$(printf '%s\n' "$resp" | sed '$d')"
+  if [[ "$code" != 2* ]]; then
+    echo "API request failed: $method $path (status $code)" >&2
+    echo "$body" >&2
+    return 1
+  fi
+  printf '%s' "$body"
+}
+
 psql_exec() {
   docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" "$@"
 }
@@ -79,10 +108,8 @@ OWNER_ID="$(psql_exec -Atc \
   "insert into users(email,password_hash,role,mfa_enabled) values('$OWNER_EMAIL','devhash','owner',false) returning id;")"
 
 echo "Creating profile..."
-PROFILE_RESP="$(curl -sS -X POST "$API_BASE/v1/profiles" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"owner_user_id\":\"$OWNER_ID\",\"display_name\":\"Lifecycle Demo $RUN_KEY\",\"region_code\":\"US-CA\"}")"
+PROFILE_RESP="$(api_request POST "/v1/profiles" \
+  "{\"owner_user_id\":\"$OWNER_ID\",\"display_name\":\"Lifecycle Demo $RUN_KEY\",\"region_code\":\"US-CA\"}")"
 PROFILE_ID="$(python3 - <<'PY' "$PROFILE_RESP"
 import json,sys
 print(json.loads(sys.argv[1])["id"])
@@ -90,10 +117,8 @@ PY
 )"
 
 echo "Creating provider..."
-PROVIDER_RESP="$(curl -sS -X POST "$API_BASE/v1/providers" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"key\":\"$PROVIDER_KEY\",\"kind\":\"search_provider\",\"enabled\":true,\"config\":{\"endpoint\":\"https://example.test\"}}")"
+PROVIDER_RESP="$(api_request POST "/v1/providers" \
+  "{\"key\":\"$PROVIDER_KEY\",\"kind\":\"search_provider\",\"enabled\":true,\"config\":{\"endpoint\":\"https://example.test\"}}")"
 PROVIDER_ID="$(python3 - <<'PY' "$PROVIDER_RESP"
 import json,sys
 print(json.loads(sys.argv[1])["id"])
@@ -101,16 +126,12 @@ PY
 )"
 
 echo "Updating provider..."
-curl -sS -X PATCH "$API_BASE/v1/providers/$PROVIDER_ID" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"enabled":false,"config":{"endpoint":"https://example2.test"}}' >/dev/null
+api_request PATCH "/v1/providers/$PROVIDER_ID" \
+  '{"enabled":false,"config":{"endpoint":"https://example2.test"}}' >/dev/null
 
 echo "Creating adapter..."
-ADAPTER_RESP="$(curl -sS -X POST "$API_BASE/v1/adapters" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"key\":\"$ADAPTER_KEY\",\"display_name\":\"Demo Adapter\",\"domain\":\"example.test\",\"flow\":\"manual\",\"adapter_version\":\"1.0.0\",\"enabled\":true,\"metadata\":{\"source\":\"smoke\"}}")"
+ADAPTER_RESP="$(api_request POST "/v1/adapters" \
+  "{\"key\":\"$ADAPTER_KEY\",\"display_name\":\"Demo Adapter\",\"domain\":\"example.test\",\"flow\":\"manual\",\"adapter_version\":\"1.0.0\",\"enabled\":true,\"metadata\":{\"source\":\"smoke\"}}")"
 ADAPTER_ID="$(python3 - <<'PY' "$ADAPTER_RESP"
 import json,sys
 print(json.loads(sys.argv[1])["id"])
@@ -118,62 +139,48 @@ PY
 )"
 
 echo "Updating adapter..."
-curl -sS -X PATCH "$API_BASE/v1/adapters/$ADAPTER_ID" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"enabled":false,"last_verified_at":"2026-01-01T00:00:00Z"}' >/dev/null
+api_request PATCH "/v1/adapters/$ADAPTER_ID" \
+  '{"enabled":false,"last_verified_at":"2026-01-01T00:00:00Z"}' >/dev/null
 
 echo "Creating findings/tasks/reminders fixtures..."
 for i in 1 2 3; do
-  FINDING_RESP="$(curl -sS -X POST "$API_BASE/v1/findings" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{\"profile_id\":\"$PROFILE_ID\",\"source_domain\":\"example$i.test\",\"source_url\":\"https://example$i.test/profile/$RUN_KEY\",\"risk_score\":$((40+i)),\"matched_identifiers\":[\"full_name\"],\"exposed_fields\":[\"name\"],\"notes\":\"fixture-$i-$RUN_KEY\"}")"
+  FINDING_RESP="$(api_request POST "/v1/findings" \
+    "{\"profile_id\":\"$PROFILE_ID\",\"source_domain\":\"example$i.test\",\"source_url\":\"https://example$i.test/profile/$RUN_KEY\",\"risk_score\":$((40+i)),\"matched_identifiers\":[\"full_name\"],\"exposed_fields\":[\"name\"],\"notes\":\"fixture-$i-$RUN_KEY\"}")"
   FINDING_ID="$(python3 - <<'PY' "$FINDING_RESP"
 import json,sys
 print(json.loads(sys.argv[1])["id"])
 PY
 )"
 
-  curl -sS -X PATCH "$API_BASE/v1/findings/$FINDING_ID" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"status":"triaged"}' >/dev/null
+  api_request PATCH "/v1/findings/$FINDING_ID" \
+    '{"status":"triaged"}' >/dev/null
 
-  TASK_RESP="$(curl -sS -X POST "$API_BASE/v1/tasks" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{\"finding_id\":\"$FINDING_ID\"}")"
+  TASK_RESP="$(api_request POST "/v1/tasks" \
+    "{\"finding_id\":\"$FINDING_ID\"}")"
   TASK_ID="$(python3 - <<'PY' "$TASK_RESP"
 import json,sys
 print(json.loads(sys.argv[1])["id"])
 PY
 )"
 
-  curl -sS -X PATCH "$API_BASE/v1/tasks/$TASK_ID" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"status":"in_progress","result_summary":"queued for review"}' >/dev/null
+  api_request PATCH "/v1/tasks/$TASK_ID" \
+    '{"status":"in_progress","result_summary":"queued for review"}' >/dev/null
 
   NEXT_RUN="$(python3 - <<PY
 from datetime import datetime, timedelta, timezone
 print((datetime.now(timezone.utc)+timedelta(days=$i)).strftime("%Y-%m-%dT%H:%M:%SZ"))
 PY
 )"
-  REMINDER_RESP="$(curl -sS -X POST "$API_BASE/v1/reminders" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{\"profile_id\":\"$PROFILE_ID\",\"finding_id\":\"$FINDING_ID\",\"reminder_type\":\"monthly_recheck\",\"next_run_at\":\"$NEXT_RUN\",\"interval_days\":30,\"enabled\":true,\"metadata\":{\"fixture\":$i}}")"
+  REMINDER_RESP="$(api_request POST "/v1/reminders" \
+    "{\"profile_id\":\"$PROFILE_ID\",\"finding_id\":\"$FINDING_ID\",\"reminder_type\":\"monthly_recheck\",\"next_run_at\":\"$NEXT_RUN\",\"interval_days\":30,\"enabled\":true,\"metadata\":{\"fixture\":$i}}")"
   REMINDER_ID="$(python3 - <<'PY' "$REMINDER_RESP"
 import json,sys
 print(json.loads(sys.argv[1])["id"])
 PY
 )"
   if [[ "$i" -eq 3 ]]; then
-    curl -sS -X PATCH "$API_BASE/v1/reminders/$REMINDER_ID" \
-      -H "Authorization: Bearer $TOKEN" \
-      -H "Content-Type: application/json" \
-      -d '{"enabled":false}' >/dev/null
+    api_request PATCH "/v1/reminders/$REMINDER_ID" \
+      '{"enabled":false}' >/dev/null
   fi
 done
 
