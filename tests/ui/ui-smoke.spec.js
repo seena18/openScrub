@@ -185,6 +185,51 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
     });
   });
 
+  await page.route("**/v1/providers?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: "provider_1",
+            key: "search_brave",
+            kind: "search",
+            config: { base_url: "https://api.example.test" },
+            enabled: true,
+            created_at: "2026-05-13T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      }),
+    });
+  });
+
+  await page.route("**/v1/adapters?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: "adapter_1",
+            key: "broker_alpha",
+            display_name: "Broker Alpha",
+            domain: "broker-alpha.test",
+            flow: "manual",
+            adapter_version: "0.1.0",
+            last_verified_at: null,
+            enabled: true,
+            metadata: { region: "us" },
+            created_at: "2026-05-13T00:00:00Z",
+            updated_at: "2026-05-13T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      }),
+    });
+  });
+
   await page.goto("/ui");
 
   await expect(page.getByRole("button", { name: "Login With Passkey" })).toBeVisible();
@@ -198,6 +243,8 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
   await expect(page.getByRole("button", { name: "Load Findings" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Load Tasks" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Load Reminders" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Load Providers" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Load Adapters" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export Filtered JSON" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy Curl Example" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear Sensitive UI Data" })).toBeVisible();
@@ -235,6 +282,12 @@ test("ui renders passkey controls and uses mocked API wiring", async ({ page }) 
 
   await page.getByRole("button", { name: "Load Reminders" }).click();
   await expect(page.locator("#reminders-output")).toContainText("reminder_1");
+
+  await page.getByRole("button", { name: "Load Providers" }).click();
+  await expect(page.locator("#providers-output")).toContainText("provider_1");
+
+  await page.getByRole("button", { name: "Load Adapters" }).click();
+  await expect(page.locator("#adapters-output")).toContainText("adapter_1");
 
   await page.getByRole("button", { name: "Clear Sensitive UI Data" }).click();
   await expect(page.locator("#api-keys-output")).toContainText("cleared");
@@ -544,4 +597,242 @@ test("ui task/reminder actions send expected payloads", async ({ page }) => {
   expect(queueTaskBody).not.toBeNull();
   expect(createReminderBody).not.toBeNull();
   expect(updateReminderBody).not.toBeNull();
+});
+
+test("ui provider/adapter actions send expected payloads", async ({ page }) => {
+  const providerItems = [
+    {
+      id: "provider_1",
+      key: "search_seed",
+      kind: "search",
+      config: { base_url: "https://seed.example.test" },
+      enabled: true,
+      created_at: "2026-05-13T00:00:00Z",
+    },
+  ];
+  const adapterItems = [
+    {
+      id: "adapter_1",
+      key: "broker_seed",
+      display_name: "Broker Seed",
+      domain: "seed-broker.test",
+      flow: "manual",
+      adapter_version: "0.1.0",
+      last_verified_at: null,
+      enabled: true,
+      metadata: { region: "us" },
+      created_at: "2026-05-13T00:00:00Z",
+      updated_at: "2026-05-13T00:00:00Z",
+    },
+  ];
+
+  let createProviderBody = null;
+  let updateProviderBody = null;
+  let createAdapterBody = null;
+  let updateAdapterBody = null;
+
+  await page.route("**/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "mocktoken",
+        token_type: "bearer",
+        user: { email: "qa@example.com", role: "owner" },
+      }),
+    });
+  });
+
+  await page.route("**/v1/auth/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        auth_type: "jwt",
+        email: "qa@example.com",
+        role: "owner",
+      }),
+    });
+  });
+
+  await page.route("**/v1/api-keys", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [] }),
+    });
+  });
+
+  await page.route("**/v1/profiles", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: "profile_1",
+            owner_user_id: "user_1",
+            display_name: "Demo Profile",
+            region_code: "US-CA",
+            status: "active",
+            created_at: "2026-05-13T00:00:00Z",
+            updated_at: "2026-05-13T00:00:00Z",
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/v1/providers?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: providerItems,
+        next_cursor: null,
+      }),
+    });
+  });
+
+  await page.route("**/v1/providers", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    createProviderBody = JSON.parse(route.request().postData() || "{}");
+    expect(createProviderBody).toEqual({
+      key: "search_brave",
+      kind: "search",
+      enabled: true,
+      config: { base_url: "https://api.example.test" },
+    });
+    const created = {
+      id: "provider_2",
+      ...createProviderBody,
+      created_at: "2026-05-13T01:00:00Z",
+    };
+    providerItems.unshift(created);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(created),
+    });
+  });
+
+  await page.route("**/v1/providers/provider_2", async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    updateProviderBody = JSON.parse(route.request().postData() || "{}");
+    expect(updateProviderBody).toEqual({
+      kind: "search",
+      enabled: false,
+      config: { base_url: "https://api2.example.test" },
+    });
+    const item = providerItems.find((x) => x.id === "provider_2");
+    Object.assign(item, updateProviderBody);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(item),
+    });
+  });
+
+  await page.route("**/v1/adapters?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: adapterItems,
+        next_cursor: null,
+      }),
+    });
+  });
+
+  await page.route("**/v1/adapters", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    createAdapterBody = JSON.parse(route.request().postData() || "{}");
+    expect(createAdapterBody).toEqual({
+      key: "broker_alpha",
+      display_name: "Broker Alpha",
+      domain: "broker-alpha.test",
+      flow: "manual",
+      adapter_version: "0.2.0",
+      enabled: true,
+      metadata: { region: "us" },
+    });
+    const created = {
+      id: "adapter_2",
+      ...createAdapterBody,
+      last_verified_at: null,
+      created_at: "2026-05-13T02:00:00Z",
+      updated_at: "2026-05-13T02:00:00Z",
+    };
+    adapterItems.unshift(created);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(created),
+    });
+  });
+
+  await page.route("**/v1/adapters/adapter_2", async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    updateAdapterBody = JSON.parse(route.request().postData() || "{}");
+    expect(updateAdapterBody).toEqual({
+      display_name: "Broker Alpha Updated",
+      domain: "broker-alpha-updated.test",
+      flow: "api",
+      adapter_version: "0.2.1",
+      enabled: false,
+      last_verified_at: "2026-05-14T00:00:00Z",
+      metadata: { notes: "updated" },
+    });
+    const item = adapterItems.find((x) => x.id === "adapter_2");
+    Object.assign(item, updateAdapterBody, { updated_at: "2026-05-13T02:10:00Z" });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(item),
+    });
+  });
+
+  await page.goto("/ui");
+  await page.fill("#email", "qa@example.com");
+  await page.fill("#password", "StrongPassw0rd!123");
+  await page.locator("#login-form button[type='submit']").click();
+
+  await page.fill("#provider-create-key", "search_brave");
+  await page.fill("#provider-create-kind", "search");
+  await page.fill("#provider-create-config", "{\"base_url\":\"https://api.example.test\"}");
+  await page.getByRole("button", { name: "Create Provider" }).click();
+  await expect(page.locator("#providers-output")).toContainText("provider_2");
+
+  await page.selectOption("#providers-select", "provider_2");
+  await page.fill("#provider-update-kind", "search");
+  await page.selectOption("#provider-update-enabled", "false");
+  await page.fill("#provider-update-config", "{\"base_url\":\"https://api2.example.test\"}");
+  await page.getByRole("button", { name: "Update Selected Provider" }).click();
+  await expect(page.locator("#providers-output")).toContainText("\"enabled\": false");
+
+  await page.fill("#adapter-create-key", "broker_alpha");
+  await page.fill("#adapter-create-display-name", "Broker Alpha");
+  await page.fill("#adapter-create-domain", "broker-alpha.test");
+  await page.selectOption("#adapter-create-flow", "manual");
+  await page.fill("#adapter-create-version", "0.2.0");
+  await page.fill("#adapter-create-metadata", "{\"region\":\"us\"}");
+  await page.getByRole("button", { name: "Create Adapter" }).click();
+  await expect(page.locator("#adapters-output")).toContainText("adapter_2");
+
+  await page.selectOption("#adapters-select", "adapter_2");
+  await page.fill("#adapter-update-display-name", "Broker Alpha Updated");
+  await page.fill("#adapter-update-domain", "broker-alpha-updated.test");
+  await page.selectOption("#adapter-update-flow", "api");
+  await page.fill("#adapter-update-version", "0.2.1");
+  await page.selectOption("#adapter-update-enabled", "false");
+  await page.fill("#adapter-update-last-verified-at", "2026-05-14T00:00:00Z");
+  await page.fill("#adapter-update-metadata", "{\"notes\":\"updated\"}");
+  await page.getByRole("button", { name: "Update Selected Adapter" }).click();
+  await expect(page.locator("#adapters-output")).toContainText("\"Broker Alpha Updated\"");
+
+  expect(createProviderBody).not.toBeNull();
+  expect(updateProviderBody).not.toBeNull();
+  expect(createAdapterBody).not.toBeNull();
+  expect(updateAdapterBody).not.toBeNull();
 });

@@ -15,6 +15,10 @@ let taskCache = [];
 let tasksNextCursor = null;
 let reminderCache = [];
 let remindersNextCursor = null;
+let providerCache = [];
+let providersNextCursor = null;
+let adapterCache = [];
+let adaptersNextCursor = null;
 
 function accessToken() {
   return localStorage.getItem(accessStorageKey) || "";
@@ -85,6 +89,8 @@ function renderSessionState({
   findingsStatus,
   tasksStatus,
   remindersStatus,
+  providersStatus,
+  adaptersStatus,
   usersStatus,
   apiKeysStatus,
   auditStatus,
@@ -92,14 +98,20 @@ function renderSessionState({
   findingsOut,
   tasksOut,
   remindersOut,
+  providersOut,
+  adaptersOut,
   usersOut,
   apiKeysOut,
   auditOut,
 }) {
   tasksStatus = tasksStatus || document.getElementById("tasks-status");
   remindersStatus = remindersStatus || document.getElementById("reminders-status");
+  providersStatus = providersStatus || document.getElementById("providers-status");
+  adaptersStatus = adaptersStatus || document.getElementById("adapters-status");
   tasksOut = tasksOut || document.getElementById("tasks-output");
   remindersOut = remindersOut || document.getElementById("reminders-output");
+  providersOut = providersOut || document.getElementById("providers-output");
+  adaptersOut = adaptersOut || document.getElementById("adapters-output");
   const user = sessionUser();
   sessionStatus.className = "status info";
   sessionStatus.textContent = summarizeSession(user);
@@ -117,6 +129,12 @@ function renderSessionState({
     reminderCache = [];
     remindersNextCursor = null;
     renderReminderPicker([]);
+    providerCache = [];
+    providersNextCursor = null;
+    renderProviderPicker([]);
+    adapterCache = [];
+    adaptersNextCursor = null;
+    renderAdapterPicker([]);
     usersCache = [];
     renderUserPicker([]);
     apiKeyCache = [];
@@ -127,6 +145,8 @@ function renderSessionState({
     if (findingsOut) findingsOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (tasksOut) tasksOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (remindersOut) remindersOut.textContent = pretty({ status: "info", detail: "Login required." });
+    if (providersOut) providersOut.textContent = pretty({ status: "info", detail: "Login required." });
+    if (adaptersOut) adaptersOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (usersOut) usersOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (apiKeysOut) apiKeysOut.textContent = pretty({ status: "info", detail: "Login required." });
     if (auditOut) auditOut.textContent = pretty({ status: "info", detail: "Login required." });
@@ -146,6 +166,12 @@ function renderSessionState({
   }
   if (remindersStatus && !["owner", "admin", "reviewer", "operator", "viewer", "system"].includes(role)) {
     setStatus(remindersStatus, "info", "Reminders panel requires authenticated role access.");
+  }
+  if (providersStatus && !["owner", "admin", "reviewer", "operator", "viewer", "system"].includes(role)) {
+    setStatus(providersStatus, "info", "Providers panel requires authenticated role access.");
+  }
+  if (adaptersStatus && !["owner", "admin", "reviewer", "operator", "viewer", "system"].includes(role)) {
+    setStatus(adaptersStatus, "info", "Adapters panel requires authenticated role access.");
   }
   if (!hasPrivilegedRole(user)) {
     setStatus(usersStatus, "info", "Users panel requires owner/admin/system role.");
@@ -502,6 +528,75 @@ function findSelectedReminder() {
   return reminderCache.find((x) => x.id === selectedId) || null;
 }
 
+function summarizeProvider(item) {
+  const kind = item.kind || "unknown";
+  const enabled = item.enabled ? "enabled" : "disabled";
+  return `${item.key} • ${kind} • ${enabled}`;
+}
+
+function renderProviderPicker(items) {
+  const select = document.getElementById("providers-select");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select provider…";
+  select.appendChild(placeholder);
+
+  for (const item of items || []) {
+    const opt = document.createElement("option");
+    opt.value = item.id;
+    opt.textContent = summarizeProvider(item);
+    select.appendChild(opt);
+  }
+
+  if (current && items.some((x) => x.id === current)) {
+    select.value = current;
+  }
+}
+
+function findSelectedProvider() {
+  const selectedId = document.getElementById("providers-select").value;
+  return providerCache.find((x) => x.id === selectedId) || null;
+}
+
+function summarizeAdapter(item) {
+  const flow = item.flow || "unknown";
+  const enabled = item.enabled ? "enabled" : "disabled";
+  const domain = item.domain || "n/a";
+  return `${item.key} • ${flow} • ${enabled} • ${domain}`;
+}
+
+function renderAdapterPicker(items) {
+  const select = document.getElementById("adapters-select");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select adapter…";
+  select.appendChild(placeholder);
+
+  for (const item of items || []) {
+    const opt = document.createElement("option");
+    opt.value = item.id;
+    opt.textContent = summarizeAdapter(item);
+    select.appendChild(opt);
+  }
+
+  if (current && items.some((x) => x.id === current)) {
+    select.value = current;
+  }
+}
+
+function findSelectedAdapter() {
+  const selectedId = document.getElementById("adapters-select").value;
+  return adapterCache.find((x) => x.id === selectedId) || null;
+}
+
 function renderUserPicker(items) {
   const select = document.getElementById("users-select");
   if (!select) return;
@@ -820,6 +915,70 @@ async function loadRemindersPage(remindersOut, { cursor = "", append = false } =
   return data;
 }
 
+function getProviderFilters() {
+  const enabledRaw = document.getElementById("providers-filter-enabled").value.trim();
+  let enabled = null;
+  if (enabledRaw === "true") enabled = true;
+  if (enabledRaw === "false") enabled = false;
+  return {
+    kind: document.getElementById("providers-filter-kind").value.trim(),
+    enabled,
+  };
+}
+
+async function loadProvidersPage(providersOut, { cursor = "", append = false } = {}) {
+  const filters = getProviderFilters();
+  const params = new URLSearchParams();
+  params.set("limit", "100");
+  if (cursor) params.set("cursor", cursor);
+  if (filters.kind) params.set("kind", filters.kind);
+  if (filters.enabled !== null) params.set("enabled", String(filters.enabled));
+  const data = await api(`/v1/providers?${params.toString()}`);
+  const items = data.items || [];
+  providerCache = append ? [...providerCache, ...items] : items;
+  providersNextCursor = data.next_cursor || null;
+  renderProviderPicker(providerCache);
+  providersOut.textContent = pretty({
+    filters,
+    count: providerCache.length,
+    next_cursor: providersNextCursor,
+    items: providerCache,
+  });
+  return data;
+}
+
+function getAdapterFilters() {
+  const enabledRaw = document.getElementById("adapters-filter-enabled").value.trim();
+  let enabled = null;
+  if (enabledRaw === "true") enabled = true;
+  if (enabledRaw === "false") enabled = false;
+  return {
+    key: document.getElementById("adapters-filter-key").value.trim(),
+    enabled,
+  };
+}
+
+async function loadAdaptersPage(adaptersOut, { cursor = "", append = false } = {}) {
+  const filters = getAdapterFilters();
+  const params = new URLSearchParams();
+  params.set("limit", "100");
+  if (cursor) params.set("cursor", cursor);
+  if (filters.key) params.set("key", filters.key);
+  if (filters.enabled !== null) params.set("enabled", String(filters.enabled));
+  const data = await api(`/v1/adapters?${params.toString()}`);
+  const items = data.items || [];
+  adapterCache = append ? [...adapterCache, ...items] : items;
+  adaptersNextCursor = data.next_cursor || null;
+  renderAdapterPicker(adapterCache);
+  adaptersOut.textContent = pretty({
+    filters,
+    count: adapterCache.length,
+    next_cursor: adaptersNextCursor,
+    items: adapterCache,
+  });
+  return data;
+}
+
 function parseJsonInput(raw, fieldName) {
   const value = String(raw || "").trim();
   if (!value) return {};
@@ -979,6 +1138,8 @@ function bind() {
   const findingsOut = document.getElementById("findings-output");
   const tasksOut = document.getElementById("tasks-output");
   const remindersOut = document.getElementById("reminders-output");
+  const providersOut = document.getElementById("providers-output");
+  const adaptersOut = document.getElementById("adapters-output");
   const usersOut = document.getElementById("users-output");
   const auditOut = document.getElementById("audit-output");
   const apiKeyPreviewOut = document.getElementById("api-key-preview-output");
@@ -992,6 +1153,8 @@ function bind() {
   const findingsStatus = document.getElementById("findings-status");
   const tasksStatus = document.getElementById("tasks-status");
   const remindersStatus = document.getElementById("reminders-status");
+  const providersStatus = document.getElementById("providers-status");
+  const adaptersStatus = document.getElementById("adapters-status");
   const usersStatus = document.getElementById("users-status");
   const auditStatus = document.getElementById("audit-status");
   const apiKeysStatus = document.getElementById("api-keys-status");
@@ -1004,6 +1167,8 @@ function bind() {
   clearStatus(findingsStatus);
   clearStatus(tasksStatus);
   clearStatus(remindersStatus);
+  clearStatus(providersStatus);
+  clearStatus(adaptersStatus);
   clearStatus(usersStatus);
   clearStatus(auditStatus);
   clearStatus(apiKeysStatus);
@@ -1015,6 +1180,8 @@ function bind() {
     findingsStatus,
     tasksStatus,
     remindersStatus,
+    providersStatus,
+    adaptersStatus,
     usersStatus,
     apiKeysStatus,
     auditStatus,
@@ -1022,6 +1189,8 @@ function bind() {
     findingsOut,
     tasksOut,
     remindersOut,
+    providersOut,
+    adaptersOut,
     usersOut,
     apiKeysOut,
     auditOut,
@@ -1938,6 +2107,301 @@ function bind() {
     }).catch(() => {});
   });
 
+  document.getElementById("providers-load-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    await runTask({
+      button,
+      statusEl: providersStatus,
+      loadingText: "Loading providers…",
+      successText: "Providers loaded.",
+      outputEl: providersOut,
+      task: async () => loadProvidersPage(providersOut, { cursor: "", append: false }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("providers-next-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    if (!providersNextCursor) {
+      providersOut.textContent = pretty({
+        status: "info",
+        detail: "No next providers page available. Load providers first or end reached.",
+      });
+      setStatus(providersStatus, "info", "No next providers page.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: providersStatus,
+      loadingText: "Loading next providers page…",
+      successText: "Next providers page loaded.",
+      outputEl: providersOut,
+      task: async () => loadProvidersPage(providersOut, { cursor: providersNextCursor, append: true }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("providers-reset-btn").addEventListener("click", () => {
+    providerCache = [];
+    providersNextCursor = null;
+    renderProviderPicker([]);
+    document.getElementById("providers-filter-kind").value = "";
+    document.getElementById("providers-filter-enabled").value = "";
+    providersOut.textContent = pretty({ status: "ok", detail: "Providers view reset." });
+    setStatus(providersStatus, "info", "Providers view reset.");
+  });
+
+  document.getElementById("providers-select").addEventListener("change", () => {
+    const selected = findSelectedProvider();
+    if (!selected) return;
+    document.getElementById("provider-update-kind").value = selected.kind || "";
+    document.getElementById("provider-update-enabled").value = String(selected.enabled);
+    document.getElementById("provider-update-config").value = pretty(selected.config || {});
+  });
+
+  document.getElementById("providers-show-btn").addEventListener("click", () => {
+    const selected = findSelectedProvider();
+    if (!selected) {
+      providersOut.textContent = pretty({ status: "info", detail: "No provider selected." });
+      setStatus(providersStatus, "info", "Select a provider.");
+      return;
+    }
+    providersOut.textContent = pretty(selected);
+    setStatus(providersStatus, "success", "Showing selected provider.");
+  });
+
+  document.getElementById("provider-create-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const key = document.getElementById("provider-create-key").value.trim();
+    const kind = document.getElementById("provider-create-kind").value.trim();
+    const enabled = document.getElementById("provider-create-enabled").checked;
+    const config = parseJsonInput(document.getElementById("provider-create-config").value, "provider config");
+    if (!key || !kind) {
+      providersOut.textContent = pretty({ error: "key and kind are required." });
+      setStatus(providersStatus, "error", "Set provider key and kind before create.");
+      return;
+    }
+    const payload = { key, kind, enabled, config };
+    await runTask({
+      button,
+      statusEl: providersStatus,
+      loadingText: "Creating provider…",
+      successText: "Provider created.",
+      outputEl: providersOut,
+      task: async () => {
+        const created = await api("/v1/providers", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        await loadProvidersPage(providersOut, { cursor: "", append: false });
+        return created;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("provider-update-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedProvider();
+    if (!selected) {
+      providersOut.textContent = pretty({ error: "Select a provider first." });
+      setStatus(providersStatus, "error", "Select a provider to update.");
+      return;
+    }
+    const kind = document.getElementById("provider-update-kind").value.trim();
+    const enabledRaw = document.getElementById("provider-update-enabled").value.trim();
+    const configRaw = document.getElementById("provider-update-config").value;
+    const payload = {};
+    if (kind) payload.kind = kind;
+    if (enabledRaw === "true") payload.enabled = true;
+    if (enabledRaw === "false") payload.enabled = false;
+    if (String(configRaw || "").trim()) payload.config = parseJsonInput(configRaw, "provider config");
+    if (Object.keys(payload).length === 0) {
+      providersOut.textContent = pretty({ status: "info", detail: "No update fields set." });
+      setStatus(providersStatus, "info", "Set at least one field to update.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: providersStatus,
+      loadingText: "Updating provider…",
+      successText: "Provider updated.",
+      outputEl: providersOut,
+      task: async () => {
+        const updated = await api(`/v1/providers/${encodeURIComponent(selected.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        const idx = providerCache.findIndex((x) => x.id === selected.id);
+        if (idx >= 0) providerCache[idx] = { ...providerCache[idx], ...updated };
+        renderProviderPicker(providerCache);
+        providersOut.textContent = pretty({
+          updated,
+          current_items: providerCache,
+          next_cursor: providersNextCursor,
+        });
+        return updated;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("adapters-load-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    await runTask({
+      button,
+      statusEl: adaptersStatus,
+      loadingText: "Loading adapters…",
+      successText: "Adapters loaded.",
+      outputEl: adaptersOut,
+      task: async () => loadAdaptersPage(adaptersOut, { cursor: "", append: false }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("adapters-next-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    if (!adaptersNextCursor) {
+      adaptersOut.textContent = pretty({
+        status: "info",
+        detail: "No next adapters page available. Load adapters first or end reached.",
+      });
+      setStatus(adaptersStatus, "info", "No next adapters page.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: adaptersStatus,
+      loadingText: "Loading next adapters page…",
+      successText: "Next adapters page loaded.",
+      outputEl: adaptersOut,
+      task: async () => loadAdaptersPage(adaptersOut, { cursor: adaptersNextCursor, append: true }),
+    }).catch(() => {});
+  });
+
+  document.getElementById("adapters-reset-btn").addEventListener("click", () => {
+    adapterCache = [];
+    adaptersNextCursor = null;
+    renderAdapterPicker([]);
+    document.getElementById("adapters-filter-key").value = "";
+    document.getElementById("adapters-filter-enabled").value = "";
+    adaptersOut.textContent = pretty({ status: "ok", detail: "Adapters view reset." });
+    setStatus(adaptersStatus, "info", "Adapters view reset.");
+  });
+
+  document.getElementById("adapters-select").addEventListener("change", () => {
+    const selected = findSelectedAdapter();
+    if (!selected) return;
+    document.getElementById("adapter-update-display-name").value = selected.display_name || "";
+    document.getElementById("adapter-update-domain").value = selected.domain || "";
+    document.getElementById("adapter-update-flow").value = selected.flow || "";
+    document.getElementById("adapter-update-version").value = selected.adapter_version || "";
+    document.getElementById("adapter-update-enabled").value = String(selected.enabled);
+    document.getElementById("adapter-update-last-verified-at").value = selected.last_verified_at || "";
+    document.getElementById("adapter-update-metadata").value = pretty(selected.metadata || {});
+    document.getElementById("task-create-adapter-key").value = selected.key || "";
+    document.getElementById("task-queue-adapter-key").value = selected.key || "";
+  });
+
+  document.getElementById("adapters-show-btn").addEventListener("click", () => {
+    const selected = findSelectedAdapter();
+    if (!selected) {
+      adaptersOut.textContent = pretty({ status: "info", detail: "No adapter selected." });
+      setStatus(adaptersStatus, "info", "Select an adapter.");
+      return;
+    }
+    adaptersOut.textContent = pretty(selected);
+    setStatus(adaptersStatus, "success", "Showing selected adapter.");
+  });
+
+  document.getElementById("adapter-create-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const key = document.getElementById("adapter-create-key").value.trim();
+    const displayName = document.getElementById("adapter-create-display-name").value.trim();
+    const domain = document.getElementById("adapter-create-domain").value.trim();
+    const flow = document.getElementById("adapter-create-flow").value.trim() || "manual";
+    const adapterVersion = document.getElementById("adapter-create-version").value.trim() || "0.0.1";
+    const enabled = document.getElementById("adapter-create-enabled").checked;
+    const metadata = parseJsonInput(document.getElementById("adapter-create-metadata").value, "adapter metadata");
+    if (!key || !displayName || !domain) {
+      adaptersOut.textContent = pretty({ error: "key, display_name, and domain are required." });
+      setStatus(adaptersStatus, "error", "Set required adapter fields before create.");
+      return;
+    }
+    const payload = {
+      key,
+      display_name: displayName,
+      domain,
+      flow,
+      adapter_version: adapterVersion,
+      enabled,
+      metadata,
+    };
+    await runTask({
+      button,
+      statusEl: adaptersStatus,
+      loadingText: "Creating adapter…",
+      successText: "Adapter created.",
+      outputEl: adaptersOut,
+      task: async () => {
+        const created = await api("/v1/adapters", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        await loadAdaptersPage(adaptersOut, { cursor: "", append: false });
+        return created;
+      },
+    }).catch(() => {});
+  });
+
+  document.getElementById("adapter-update-btn").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const selected = findSelectedAdapter();
+    if (!selected) {
+      adaptersOut.textContent = pretty({ error: "Select an adapter first." });
+      setStatus(adaptersStatus, "error", "Select an adapter to update.");
+      return;
+    }
+    const displayName = document.getElementById("adapter-update-display-name").value.trim();
+    const domain = document.getElementById("adapter-update-domain").value.trim();
+    const flow = document.getElementById("adapter-update-flow").value.trim();
+    const adapterVersion = document.getElementById("adapter-update-version").value.trim();
+    const enabledRaw = document.getElementById("adapter-update-enabled").value.trim();
+    const lastVerifiedAt = document.getElementById("adapter-update-last-verified-at").value.trim();
+    const metadataRaw = document.getElementById("adapter-update-metadata").value;
+    const payload = {};
+    if (displayName) payload.display_name = displayName;
+    if (domain) payload.domain = domain;
+    if (flow) payload.flow = flow;
+    if (adapterVersion) payload.adapter_version = adapterVersion;
+    if (enabledRaw === "true") payload.enabled = true;
+    if (enabledRaw === "false") payload.enabled = false;
+    if (lastVerifiedAt) payload.last_verified_at = lastVerifiedAt;
+    if (String(metadataRaw || "").trim()) payload.metadata = parseJsonInput(metadataRaw, "adapter metadata");
+    if (Object.keys(payload).length === 0) {
+      adaptersOut.textContent = pretty({ status: "info", detail: "No update fields set." });
+      setStatus(adaptersStatus, "info", "Set at least one field to update.");
+      return;
+    }
+    await runTask({
+      button,
+      statusEl: adaptersStatus,
+      loadingText: "Updating adapter…",
+      successText: "Adapter updated.",
+      outputEl: adaptersOut,
+      task: async () => {
+        const updated = await api(`/v1/adapters/${encodeURIComponent(selected.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        const idx = adapterCache.findIndex((x) => x.id === selected.id);
+        if (idx >= 0) adapterCache[idx] = { ...adapterCache[idx], ...updated };
+        renderAdapterPicker(adapterCache);
+        adaptersOut.textContent = pretty({
+          updated,
+          current_items: adapterCache,
+          next_cursor: adaptersNextCursor,
+        });
+        return updated;
+      },
+    }).catch(() => {});
+  });
+
   document.getElementById("users-btn").addEventListener("click", async (e) => {
     const button = e.currentTarget;
     await runTask({
@@ -2375,6 +2839,31 @@ function bind() {
     document.getElementById("reminder-update-interval-days").value = "";
     document.getElementById("reminder-update-enabled").value = "";
     document.getElementById("reminder-update-metadata").value = "";
+    document.getElementById("providers-filter-kind").value = "";
+    document.getElementById("providers-filter-enabled").value = "";
+    document.getElementById("provider-create-key").value = "";
+    document.getElementById("provider-create-kind").value = "";
+    document.getElementById("provider-create-enabled").checked = true;
+    document.getElementById("provider-create-config").value = "";
+    document.getElementById("provider-update-kind").value = "";
+    document.getElementById("provider-update-enabled").value = "";
+    document.getElementById("provider-update-config").value = "";
+    document.getElementById("adapters-filter-key").value = "";
+    document.getElementById("adapters-filter-enabled").value = "";
+    document.getElementById("adapter-create-key").value = "";
+    document.getElementById("adapter-create-display-name").value = "";
+    document.getElementById("adapter-create-domain").value = "";
+    document.getElementById("adapter-create-flow").value = "manual";
+    document.getElementById("adapter-create-version").value = "0.0.1";
+    document.getElementById("adapter-create-enabled").checked = true;
+    document.getElementById("adapter-create-metadata").value = "";
+    document.getElementById("adapter-update-display-name").value = "";
+    document.getElementById("adapter-update-domain").value = "";
+    document.getElementById("adapter-update-flow").value = "";
+    document.getElementById("adapter-update-version").value = "";
+    document.getElementById("adapter-update-enabled").value = "";
+    document.getElementById("adapter-update-last-verified-at").value = "";
+    document.getElementById("adapter-update-metadata").value = "";
 
     auditItemsCache = [];
     auditNextCursor = null;
@@ -2385,8 +2874,14 @@ function bind() {
     tasksNextCursor = null;
     reminderCache = [];
     remindersNextCursor = null;
+    providerCache = [];
+    providersNextCursor = null;
+    adapterCache = [];
+    adaptersNextCursor = null;
     renderTaskPicker([]);
     renderReminderPicker([]);
+    renderProviderPicker([]);
+    renderAdapterPicker([]);
     document.getElementById("audit-filter-action").value = "";
     document.getElementById("audit-filter-actor").value = "";
     document.getElementById("audit-filter-object").value = "";
@@ -2399,6 +2894,8 @@ function bind() {
     findingsOut.textContent = pretty({ status: "ok", detail: "Findings cache and update inputs cleared." });
     tasksOut.textContent = pretty({ status: "ok", detail: "Task cache and form inputs cleared." });
     remindersOut.textContent = pretty({ status: "ok", detail: "Reminder cache and form inputs cleared." });
+    providersOut.textContent = pretty({ status: "ok", detail: "Provider cache and form inputs cleared." });
+    adaptersOut.textContent = pretty({ status: "ok", detail: "Adapter cache and form inputs cleared." });
     auditOut.textContent = pretty({ status: "ok", detail: "Audit cache + filters cleared from UI state." });
     apiKeysOut.textContent = pretty({ status: "ok", detail: "API key plaintext and danger confirm cleared." });
     apiKeyPreviewOut.textContent = pretty({ status: "ok", detail: "Preview remains available; sensitive fields cleared." });
